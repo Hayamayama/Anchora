@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0" toolsVersion="19529" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES">
+    <dependencies>
+        <deployment identifier="macosx"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="19529"/>
+        <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
+    </dependencies>
+    <objects>
+        <customObject id="-2" userLabel="File's Owner" customClass="SKLineInspector">
+            <connections>
+                <outlet property="endLineStyleButton" destination="52" id="62"/>
+                <outlet property="lineWell" destination="69" id="70"/>
+                <outlet property="startLineStyleButton" destination="13" id="61"/>
+                <outlet property="window" destination="5" id="36"/>
+            </connections>
+        </customObject>
+        <customObject id="-1" userLabel="First Responder" customClass="FirstResponder"/>
+        <customObject id="-3" userLabel="Application" customClass="NSObject"/>
+        <window title="Lines" allowsToolTipsWhenApplicationIsInactive="NO" autorecalculatesKeyViewLoop="NO" restorable="NO" hidesOnDeactivate="YES" releasedWhenClosed="NO" visibleAtLaunch="NO" animationBehavior="default" id="5" userLabel="Panel" customClass="NSPanel">
+            <windowStyleMask key="styleMask" titled="YES" closable="YES" utility="YES"/>
+            <windowPositionMask key="initialPositionMask" leftStrut="YES" rightStrut="YES" topStrut="YES" bottomStrut="YES"/>
+            <rect key="contentRect" x="242" y="510" width="251" height="228"/>
+            <rect key="screenRect" x="0.0" y="0.0" width="1280" height="775"/>
+            <view key="contentView" id="6">
+                <rect key="frame" x="0.0" y="0.0" width="261" height="228"/>
+                <autoresizingMask key="autoresizingMask"/>
+                <subviews>
+                    <textField horizontalHuggingPriority="750" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="7" userLabel="Line Width:">
+                        <rect key="frame" x="20" y="121" width="64" height="14"/>
+                        <textFieldCell key="cell" controlSize="small" scrollable="YES" lineBreakMode="clipping" sendsActionOnEndEditing="YES" alignment="right" title="Line Width:" id="78">
+                            <font key="font" metaFont="smallSystem"/>
+                            <color key="textColor" name="controlTextColor" catalog="System" colorSpace="catalog"/>
+                            <color key="backgroundColor" name="controlColor" catalog="System" colorSpace="catalog"/>
+                        </textFieldCell>
+                    </textField>
+                    <textField toolTip="Dash pattern as numbers separated by space" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="8" userLabel="Dash Pattern Text Field">
+                        <rect key="frame" x="90" y="93" width="161" height="18"/>
+                        <textFieldCell key="cell" controlSize="small" scrollable="YES" lineBreakMode="clipping" selectable="YES" editable="YES" sendsActionOnEndEditing="YES" state="on" borderStyle="bezel" drawsBackground="YES" id="79">
+                            <font key="font" metaFont="smallSystem"/>
+                            <color key="textColor" name="controlTextColor" catalog="System" colorSpace="catalog"/>
+                            <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
+                        </textFieldCell>
+                        <connections>
+                            <accessibilityConnection property="title" destination="16" id="72"/>
+                            <binding destination="-2" name="value" keyPath="dashPattern" id="141"/>
+                            <outlet property="formatter" destination="142" id="143"/>
+                            <outlet property="nextKeyView" destination="13" id="42"/>
+                        </connections>
+                    </textField>
+                    <textField toolTip="Line width" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="10" userLabel="Line Width Text Field">
+                        <rect key="frame" x="229" y="119" width="22" height="19"/>
+                        <constraints>
+                            <constraint firstAttribute="width" priority="1" constant="22" id="lZh-uz-Vbz"/>
+                        </constraints>
+                        <textFieldCell key="cell" controlSize="small" scrollable="YES" lineBreakMode="clipping" selectable="YES" editable="YES" sendsActionOnEndEditing="YES" state="on" borderStyle="bezel" drawsBackground="YES" id="81">
+                            <numberFormatter key="formatter" formatterBehavior="10_0" positiveFormat="0" negativeFormat="-0" localizesFormat="NO" hasThousandSeparators="NO" thousandSeparator="," id="11">
+                                <attributedString key="attributedStringForZero">
+                                    <fragment content="0"/>
+                                </attributedString>
+                                <decimal key="minimum" value="0"/>
+                                <real key="maximum" value="100"/>
+                            </numberFormatter>
+                            <font key="font" metaFont="smallSystem"/>
+                            <color key="textColor" name="controlTextColor" catalog="System" colorSpace="catalog"/>
+                            <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
+                        </textFieldCell>
+                        <connections>
+                            <accessibilityConnection property="title" destination="7" id="73"/>
+                            <binding destination="-2" name="value" keyPath="lineWidth" id="67">
+                                <dictionary key="options">
+                                    <integer key="NSContinuouslyUpdatesValue" value="1"/>
+                                </dictionary>
+                            </binding>
+                        </connections>
+                    </textField>
+                    <slider toolTip="Line width" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="12" userLabel="Line Width Slider">
+                        <rect key="frame" x="88" y="118" width="135" height="20"/>
+                        <sliderCell key="cell" controlSize="small" alignment="left" maxValue="10" doubleValue="1" tickMarkPosition="above" numberOfTickMarks="11" allowsTickMarkValuesOnly="YES" sliderType="linear" id="82">
+                            <font key="font" size="12" name="Helvetica"/>
+                        </sliderCell>
+                        <connections>
+                            <accessibilityConnection property="link" destination="10" id="98"/>
+                            <accessibilityConnection property="title" destination="7" id="71"/>
+                            <binding destination="-2" name="value" keyPath="lineWidth" id="45"/>
+                            <outlet property="nextKeyView" destination="10" id="39"/>
+                        </connections>
+                    </slider>
+                    <segmentedControl verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="13" userLabel="Start Line Style Segmented Control">
+                        <rect key="frame" x="88" y="34" width="165" height="21"/>
+                        <segmentedCell key="cell" controlSize="small" borderStyle="border" alignment="left" style="rounded" trackingMode="selectOne" id="83">
+                            <font key="font" metaFont="smallSystem"/>
+                            <segments>
+                                <segment imageScaling="none" width="24"/>
+                                <segment imageScaling="none" width="24" tag="1"/>
+                                <segment imageScaling="none" width="24" tag="2"/>
+                                <segment imageScaling="none" width="24" tag="3"/>
+                                <segment imageScaling="none" width="24" tag="4"/>
+                                <segment imageScaling="none" width="24" tag="5"/>
+                            </segments>
+                        </segmentedCell>
+                        <connections>
+                            <accessibilityConnection property="link" destination="52" id="101"/>
+                            <accessibilityConnection property="title" destination="17" id="74"/>
+                            <binding destination="-2" name="selectedTag" keyPath="startLineStyle" id="49"/>
+                            <outlet property="nextKeyView" destination="52" id="53"/>
+                        </connections>
+                    </segmentedControl>
+                    <textField horizontalHuggingPriority="750" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="16" userLabel="Dash Pattern:">
+                        <rect key="frame" x="8" y="95" width="76" height="14"/>
+                        <constraints>
+                            <constraint firstAttribute="height" constant="14" id="1I4-1o-S71"/>
+                        </constraints>
+                        <textFieldCell key="cell" controlSize="small" scrollable="YES" lineBreakMode="clipping" sendsActionOnEndEditing="YES" alignment="right" title="Dash Pattern:" id="85">
+                            <font key="font" metaFont="smallSystem"/>
+                            <color key="textColor" name="controlTextColor" catalog="System" colorSpace="catalog"/>
+                            <color key="backgroundColor" name="controlColor" catalog="System" colorSpace="catalog"/>
+                        </textFieldCell>
+                    </textField>
+                    <textField horizontalHuggingPriority="750" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="17" userLabel="Start:">
+                        <rect key="frame" x="50" y="38" width="34" height="14"/>
+                        <textFieldCell key="cell" controlSize="small" scrollable="YES" lineBreakMode="clipping" sendsActionOnEndEditing="YES" alignment="right" title="Start:" id="86">
+                            <font key="font" metaFont="smallSystem"/>
+                            <color key="textColor" name="controlTextColor" catalog="System" colorSpace="catalog"/>
+                            <color key="backgroundColor" name="controlColor" catalog="System" colorSpace="catalog"/>
+                        </textFieldCell>
+                    </textField>
+                    <textField horizontalHuggingPriority="750" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="18" userLabel="End:">
+                        <rect key="frame" x="56" y="12" width="28" height="14"/>
+                        <textFieldCell key="cell" controlSize="small" scrollable="YES" lineBreakMode="clipping" sendsActionOnEndEditing="YES" alignment="right" title="End:" id="87">
+                            <font key="font" metaFont="smallSystem"/>
+                            <color key="textColor" name="controlTextColor" catalog="System" colorSpace="catalog"/>
+                            <color key="backgroundColor" name="controlColor" catalog="System" colorSpace="catalog"/>
+                        </textFieldCell>
+                    </textField>
+                    <textField verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="31">
+                        <rect key="frame" x="8" y="146" width="124" height="14"/>
+                        <textFieldCell key="cell" controlSize="small" scrollable="YES" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="Line and Border Style" id="88">
+                            <font key="font" metaFont="smallSystemBold"/>
+                            <color key="textColor" name="controlTextColor" catalog="System" colorSpace="catalog"/>
+                            <color key="backgroundColor" name="controlColor" catalog="System" colorSpace="catalog"/>
+                        </textFieldCell>
+                    </textField>
+                    <textField verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="32">
+                        <rect key="frame" x="8" y="62" width="101" height="14"/>
+                        <textFieldCell key="cell" controlSize="small" scrollable="YES" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="Line Ending Style" id="89">
+                            <font key="font" metaFont="smallSystemBold"/>
+                            <color key="textColor" name="controlTextColor" catalog="System" colorSpace="catalog"/>
+                            <color key="backgroundColor" name="controlColor" catalog="System" colorSpace="catalog"/>
+                        </textFieldCell>
+                    </textField>
+                    <box verticalHuggingPriority="750" boxType="separator" translatesAutoresizingMaskIntoConstraints="NO" id="34">
+                        <rect key="frame" x="10" y="82" width="241" height="5"/>
+                    </box>
+                    <segmentedControl verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="52" userLabel="End Line Style Segmented Control">
+                        <rect key="frame" x="88" y="8" width="165" height="21"/>
+                        <segmentedCell key="cell" controlSize="small" borderStyle="border" alignment="left" style="rounded" trackingMode="selectOne" id="90">
+                            <font key="font" metaFont="smallSystem"/>
+                            <segments>
+                                <segment imageScaling="none" width="24"/>
+                                <segment imageScaling="none" width="24" tag="1"/>
+                                <segment imageScaling="none" width="24" tag="2"/>
+                                <segment imageScaling="none" width="24" tag="3"/>
+                                <segment imageScaling="none" width="24" tag="4"/>
+                                <segment imageScaling="none" width="24" tag="5"/>
+                            </segments>
+                        </segmentedCell>
+                        <connections>
+                            <accessibilityConnection property="title" destination="18" id="75"/>
+                            <binding destination="-2" name="selectedTag" keyPath="endLineStyle" id="55"/>
+                            <outlet property="nextKeyView" destination="12" id="54"/>
+                        </connections>
+                    </segmentedControl>
+                    <customView translatesAutoresizingMaskIntoConstraints="NO" id="69" customClass="SKLineWell">
+                        <rect key="frame" x="10" y="168" width="241" height="50"/>
+                        <constraints>
+                            <constraint firstAttribute="height" constant="50" id="49j-AS-jqT"/>
+                        </constraints>
+                    </customView>
+                </subviews>
+                <constraints>
+                    <constraint firstItem="69" firstAttribute="top" secondItem="6" secondAttribute="top" constant="10" id="0aM-20-WLJ"/>
+                    <constraint firstItem="12" firstAttribute="leading" secondItem="7" secondAttribute="trailing" constant="8" symbolic="YES" id="1MF-wG-1Py"/>
+                    <constraint firstItem="34" firstAttribute="top" secondItem="16" secondAttribute="bottom" constant="10" id="3Qc-nV-SrB"/>
+                    <constraint firstItem="32" firstAttribute="top" secondItem="34" secondAttribute="bottom" constant="8" symbolic="YES" id="4pK-31-oZk"/>
+                    <constraint firstItem="69" firstAttribute="trailing" secondItem="10" secondAttribute="trailing" id="6sO-En-pEM"/>
+                    <constraint firstAttribute="trailing" secondItem="34" secondAttribute="trailing" constant="10" id="8cy-lj-ijm"/>
+                    <constraint firstAttribute="trailing" relation="greaterThanOrEqual" secondItem="32" secondAttribute="trailing" constant="10" id="9Th-OM-yqC"/>
+                    <constraint firstItem="7" firstAttribute="baseline" secondItem="12" secondAttribute="baseline" id="BPQ-vA-Ds7"/>
+                    <constraint firstItem="52" firstAttribute="trailing" secondItem="13" secondAttribute="trailing" id="CCS-IK-Ypy"/>
+                    <constraint firstItem="13" firstAttribute="leading" secondItem="17" secondAttribute="trailing" constant="8" symbolic="YES" id="ED9-G6-wE7"/>
+                    <constraint firstItem="18" firstAttribute="centerY" secondItem="52" secondAttribute="centerY" id="Eyy-ee-l2G"/>
+                    <constraint firstItem="69" firstAttribute="leading" secondItem="6" secondAttribute="leading" constant="10" id="FYg-4j-4gG"/>
+                    <constraint firstItem="16" firstAttribute="centerY" secondItem="8" secondAttribute="centerY" id="G2J-J6-Fk4"/>
+                    <constraint firstItem="17" firstAttribute="leading" relation="greaterThanOrEqual" secondItem="6" secondAttribute="leading" constant="10" id="IQz-ar-UAf"/>
+                    <constraint firstItem="32" firstAttribute="leading" secondItem="31" secondAttribute="leading" id="KpH-gn-YyD"/>
+                    <constraint firstItem="8" firstAttribute="leading" secondItem="13" secondAttribute="leading" id="LbB-IF-i5w"/>
+                    <constraint firstItem="10" firstAttribute="trailing" secondItem="8" secondAttribute="trailing" id="MhG-vX-QIw"/>
+                    <constraint firstItem="16" firstAttribute="leading" secondItem="6" secondAttribute="leading" priority="750" constant="10" id="SYu-Fq-XqK"/>
+                    <constraint firstItem="52" firstAttribute="top" secondItem="13" secondAttribute="bottom" constant="8" symbolic="YES" id="UXF-C3-4gq"/>
+                    <constraint firstItem="31" firstAttribute="leading" secondItem="6" secondAttribute="leading" constant="10" id="VPe-Mg-iRw"/>
+                    <constraint firstAttribute="trailing" relation="greaterThanOrEqual" secondItem="31" secondAttribute="trailing" constant="10" id="Vzd-3V-bVy"/>
+                    <constraint firstItem="34" firstAttribute="leading" secondItem="6" secondAttribute="leading" constant="10" id="ZfN-8B-JSE"/>
+                    <constraint firstItem="7" firstAttribute="leading" relation="greaterThanOrEqual" secondItem="6" secondAttribute="leading" constant="10" id="Zuq-JK-P7p"/>
+                    <constraint firstItem="52" firstAttribute="leading" secondItem="18" secondAttribute="trailing" constant="8" symbolic="YES" id="a6P-VC-ZKy"/>
+                    <constraint firstItem="13" firstAttribute="leading" secondItem="52" secondAttribute="leading" id="bLI-nZ-aww"/>
+                    <constraint firstAttribute="bottom" secondItem="52" secondAttribute="bottom" constant="10" id="dCY-XG-ufG"/>
+                    <constraint firstItem="8" firstAttribute="leading" secondItem="12" secondAttribute="leading" id="dNW-gV-HFX"/>
+                    <constraint firstItem="17" firstAttribute="centerY" secondItem="13" secondAttribute="centerY" id="erO-gR-cUU"/>
+                    <constraint firstAttribute="trailing" secondItem="69" secondAttribute="trailing" constant="10" id="gem-FH-csW"/>
+                    <constraint firstItem="34" firstAttribute="top" secondItem="8" secondAttribute="bottom" constant="8" symbolic="YES" id="gpf-IM-on0"/>
+                    <constraint firstItem="13" firstAttribute="top" secondItem="32" secondAttribute="bottom" constant="8" symbolic="YES" id="htL-gm-Vrv"/>
+                    <constraint firstItem="8" firstAttribute="leading" secondItem="16" secondAttribute="trailing" constant="8" symbolic="YES" id="j4A-vm-ySv"/>
+                    <constraint firstItem="17" firstAttribute="trailing" secondItem="16" secondAttribute="trailing" id="l7a-nN-TRn"/>
+                    <constraint firstItem="8" firstAttribute="top" secondItem="10" secondAttribute="bottom" constant="8" symbolic="YES" id="mrp-dl-hFK"/>
+                    <constraint firstItem="7" firstAttribute="baseline" secondItem="10" secondAttribute="baseline" id="oTg-NM-GYC"/>
+                    <constraint firstItem="31" firstAttribute="top" secondItem="69" secondAttribute="bottom" constant="8" symbolic="YES" id="por-iO-msq"/>
+                    <constraint firstItem="13" firstAttribute="trailing" secondItem="8" secondAttribute="trailing" id="qGL-bi-Z4C"/>
+                    <constraint firstItem="18" firstAttribute="trailing" secondItem="17" secondAttribute="trailing" id="xVl-q5-gri"/>
+                    <constraint firstItem="18" firstAttribute="leading" relation="greaterThanOrEqual" secondItem="6" secondAttribute="leading" constant="10" id="xh9-7m-adV"/>
+                    <constraint firstItem="10" firstAttribute="top" secondItem="31" secondAttribute="bottom" constant="8" symbolic="YES" id="y1O-Oy-hVZ"/>
+                    <constraint firstItem="10" firstAttribute="leading" secondItem="12" secondAttribute="trailing" constant="8" symbolic="YES" id="yxt-Ey-AAc"/>
+                    <constraint firstItem="16" firstAttribute="leading" relation="greaterThanOrEqual" secondItem="6" secondAttribute="leading" constant="10" id="ztT-Nq-u9p"/>
+                </constraints>
+            </view>
+            <connections>
+                <outlet property="delegate" destination="-2" id="37"/>
+                <outlet property="initialFirstResponder" destination="12" id="38"/>
+            </connections>
+            <point key="canvasLocation" x="-147" y="115"/>
+        </window>
+        <userDefaultsController representsSharedInstance="YES" id="138"/>
+        <customObject id="142" customClass="SKNumberArrayFormatter"/>
+    </objects>
+</document>

@@ -1,0 +1,5 @@
+// Base framework only
+
+#include "SkimNotes-Framework.xcconfig"
+
+PRODUCT_NAME = SkimNotesBase

@@ -1,0 +1,9 @@
+// Test app only
+
+INSTALL_PATH = $(HOME)/Applications
+
+INFOPLIST_FILE = SkimNotesTest-Info.plist
+PRODUCT_NAME = SkimNotesTest
+PRODUCT_BUNDLE_IDENTIFIER = net.sourceforge.skim-app.SkimNotesTest
+
+LD_RUNPATH_SEARCH_PATHS = @loader_path/../Frameworks

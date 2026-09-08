@@ -1,0 +1,195 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2639
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica-Bold;\f1\fswiss\fcharset0 Helvetica;\f2\fmodern\fcharset0 Courier;
+\f3\fnil\fcharset0 Menlo-Regular;}
+{\colortbl;\red255\green255\blue255;\red170\green13\blue145;\red92\green38\blue153;\red0\green0\blue0;
+\red255\green255\blue255;\red28\green0\blue207;}
+{\*\expandedcolortbl;;\csgenericrgb\c66667\c5098\c56863;\csgenericrgb\c36078\c14902\c60000;\csgenericrgb\c0\c0\c0;
+\csgenericrgb\c100000\c100000\c100000;\csgenericrgb\c10980\c0\c81176;}
+\paperw12240\paperh15840\viewkind0
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f0\b\fs36 \cf0 SkimNotes Framework
+\fs24 \
+\
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f1\b0 \cf0 The SkimNotes framework defines an interface to easily work with Skim notes.  You can read and write Skim notes in various formats from and to extended attributes, read and write them from and to a .skim file, or read them from a PDF bundle.  Below is a short description of the various classes and categories defined in this framework.  Your main interface with the framework will probably be either the NSFileManager category or the PDFDocument category.\
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f0\b \cf0 \
+NSFileManager (SKNExtensions)
+\f1\b0 \
+\
+A category on NSFileManager.  This category adds methods to read and write Skim notes.  Skim notes can be set in the extended attributes of a (PDF) file, contained in a .skim file, or contained inside a PDF bundle.  There are three types of Skim notes data: archived property lists, text notes, or RTF notes.  This class will probably be your main interface with the framework.\
+\
+
+\f0\b PDFDocument (SKNExtensions)
+\f1\b0 \
+\
+A category on PDFDocument.  This category defines methods to add Skim notes to a PDFDocument.  Skim notes added to a PDFDocument are represented by concrete PDFAnnotation subclasses.  You can either add Skim notes from an array of properties, or by initializing a new document from a URL for a PDF bundle or a PDF file containing Skim notes in its extended attributes.  This class may be your main interface with the framework.\
+\
+
+\f0\b SKNExtendedAttributeManager
+\f1\b0 \
+\
+A class with a shared object to read and write data from and to extended attributes.  This class is basically an Objective-C wrapper around the low-level BSD functions for accessing extended attributes.  This class also contains logic to split the data into segments, to avoid the effective 2kB size limit of extended attributes on Mac OS.  You probably don't need to deal directly with this class, you probably use it indirectly through the API provided by the NSFileManager and PDFDocument categories.\
+\
+
+\f0\b PDFAnnotation (SKNExtensions)
+\f1\b0 \
+
+\f0\b PDFAnnotationCircle (SKNExtensions)
+\f1\b0 \
+
+\f0\b PDFAnnotationSquare (SKNExtensions)
+\f1\b0 \
+
+\f0\b PDFAnnotationFreeText (SKNExtensions)
+\f1\b0 \
+
+\f0\b PDFAnnotationText (SKNExtensions)
+\f1\b0 \
+
+\f0\b PDFAnnotationLine (SKNExtensions)
+\f1\b0 \
+
+\f0\b PDFAnnotationMarkup (SKNExtensions)
+\f1\b0 \
+
+\f0\b PDFAnnotationInk (SKNExtensions)
+\f1\b0 \
+\
+Categories on PDFAnnotation (sub)classes.  These categories define the logic to translate between a dictionary of properties and a PDFAnnotation.  It defines a new property to find out if an annotation is created as a Skim note.  It also defines a new designated initializer for initialing new Skim note annotations, as well as a custom initializer to create an annotation from a Skim note.  You don't need to deal directly with the methods defined in this category, and only indirectly use it from the PDFDocument category.  You may add overrides of the designated initializer to the concrete subclasses to provide default values for their properties. \
+\
+
+\f0\b SKNPDFAnnotationNote
+\f1\b0 \
+\
+A concrete subclass of PDFAnnotationText.  This class is used to represent Skim anchored notes.  Objects of this class contain, apart from the properties of PDFAnnotationText, an image and an attributed string value.\
+\
+\
+
+\f0\b\fs36 SkimNotesBase Framework
+\fs24 \
+\
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f1\b0 \cf0 The SkimNotesBase framework is a more basic version of the SkimNotes framework without the PDFKit extensions.  It only contains the NSFileManager(SKNExtensions) and the SKNExtendedAttributeManager.  It allows you to read and write Skim notes as dictionaries, text, or RTF data from and to files, but not to convert them to PDFAnnotations and back.\
+\
+\
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f0\b\fs36 \cf0 Skimnotes Command Line Tool
+\fs24 \
+\
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f1\b0 \cf0 The skimnotes tool provides a command line utility to read and write Skim notes from and to a file or PDF bundle.  You can either directly access the Skim notes using the command line tool.  Or you can run the tool as an agent, and connect to the agent using Distributed Objects.  Use 
+\f2 skimnotes help
+\f1  to get more help on using the tool.\
+\
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f0\b \cf0 SKNAgentListenerProtocol
+\f1\b0 \
+\
+This protocol is used by the agent.  You can send messages from this protocol to the proxy of the connection through DO.\
+\
+\pard\tx560\pardeftab560\pardirnatural\partightenfactor0
+
+\f3\fs22 \cf2 \CocoaLigature0 @protocol\cf0  SKNAgentListenerProtocol\
+- (\cf2 bycopy\cf0  \cf2 nullable \cf3 NSData\cf0  *)SkimNotesAtPath:(\cf2 in\cf0  \cf2 bycopy\cf0  \cf3 NSString\cf0  *)aFile;\
+- (\cf2 bycopy\cf0  \cf2 nullable \cf3 NSData\cf0  *)RTFNotesAtPath:(\cf2 in\cf0  \cf2 bycopy\cf0  \cf3 NSString\cf0  *)aFile;\
+- (\cf2 bycopy\cf0  \cf2 nullable \cf3 NSData\cf0  *)textNotesAtPath:(\cf2 in\cf0  \cf2 bycopy\cf0  \cf3 NSString\cf0  *)aFile encoding:(\cf3 NSStringEncoding\cf0 )encoding;\
+\cf2 @end\cf0 \
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f1\fs24 \cf0 \CocoaLigature1 \
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f0\b \cf0 SKNXPCAgentListenerProtocol
+\f1\b0 \
+\
+This protocol is used by the XPC agent.  You can send messages from this protocol to the proxy of the XPC connection through DO.\
+\
+\pard\tx560\pardeftab560\pardirnatural\partightenfactor0
+
+\f3\fs22 \cf2 \CocoaLigature0 @protocol\cf0  SKNAgentListenerProtocol\
+- (\cf2 void\cf0 )readSkimNotesAtURL:(\cf3 NSURL\cf0  *)aURL reply:(\cf2 void\cf0  (^)(\cf3 NSData\cf0  * \cf2 _Nullable\cf0 ))reply;\
+- (\cf2 void\cf0 )readRTFNotesAtURL:(\cf3 NSURL\cf0  *)aURL reply:(\cf2 void\cf0  (^)(\cf3 NSData\cf0  * \cf2 _Nullable\cf0 ))reply;\
+- (\cf2 void\cf0 )readTextNotesAtURL:(\cf3 NSURL\cf0  *)aURL reply:(\cf2 void\cf0  (^)(\cf3 NSString\cf0  * \cf2 _Nullable\cf0 ))reply;\
+\cf2 @end\cf0 \
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f1\fs24 \cf0 \CocoaLigature1 \
+\
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f0\b\fs36 \cf0 Skimpdf Command Line Tool
+\fs24 \
+\
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f1\b0 \cf0 The skimpdf tool provides a command line utility to manipulate PDF files and associated Skim notes, such as embedding or unembedding Skim notes in the PDF, or to merge and extract pages from PDF files with attached Skim notes.  Use 
+\f2 skimpdf help
+\f1  to get more help on using the tool.\
+\
+\
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f0\b\fs36 \cf0 Notes on Linking the Framework
+\fs24 \
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f1\b0 \cf0 \
+The skimNotes framework uses 
+\f3\fs22 \CocoaLigature0 @rpath
+\f1\fs24 \CocoaLigature1  as the base for the install name. This means that when an executable bundle wants to embed and link against the framework, it has to provide a runpath search path. This is typically done by using the following build setting for the executable bundle linking the embedded SkimNotes framework:\
+\
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f3\fs22 \cf4 \cb5 LD_RUNPATH_SEARCH_PATHS = @loader_path/../Frameworks
+\f1\fs24 \cf0 \cb1 \
+\
+\
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f0\b\fs36 \cf0 Notes on Building the Framework
+\fs24 \
+\
+Support for older OS versions
+\f1\b0 \
+\
+If you need to build the frameworks and/or the tools with support for older Mac OS X versions, you will need to change the build configuration and build them yourself.  Easiest is to edit SkimNotes-Common.xcconfig.  Set the deployment target by replacing the 
+\f3\fs22 \CocoaLigature0 MACOSX_DEPLOYMENT_TARGET
+\f1\fs24 \CocoaLigature1  line by something like the following line:\
+\
+\pard\tx560\pardeftab560\pardirnatural\partightenfactor0
+
+\f3\fs22 \cf0 \CocoaLigature0 MACOSX_DEPLOYMENT_TARGET = \cf6 10.6\
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f1\fs24 \cf0 \CocoaLigature1 \
+The code does not support deployment targets lower than 10.6 currently.  However, for older compiler versions the nullability qualifiers and macros and lightweight generics declarations may need to be removed.\
+\
+Also you may want to support older architectures by changing the 
+\f3\fs22 \CocoaLigature0 ARCHS
+\f1\fs24 \CocoaLigature1  line by something like:\
+\pard\tx560\pardeftab560\pardirnatural\partightenfactor0
+
+\f3\fs22 \cf0 \CocoaLigature0 \
+ARCHS = \cf4 \cb5 \CocoaLigature1 $(ARCHS_STANDARD_32_64_BIT)\cf0 \cb1 \CocoaLigature0 \
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f1\fs24 \cf0 \CocoaLigature1 \
+If you need to support GC, you should enable it by uncommenting the setting in SkimNotes-Common.xcconfig.\
+\
+Of course you need to use an older version of Xcode to build with these settings.\
+\
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f0\b \cf0 SkimNotes Framework Documentation
+\f1\b0 \
+\
+You can build documentation for the framework in HTML format by choosing the HeaderDocs target in the Xcode project and building.  The documentation will be build in the default build location.\
+}

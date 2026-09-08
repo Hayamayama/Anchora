@@ -1,0 +1,68 @@
+#!/bin/bash
+
+# displayline (Skim)
+#
+# Usage: displayline [-r] [-b] [-g] [-z] LINE PDFFILE [TEXSOURCEFILE]
+
+if [[ $# -eq 0 || "$1" == "-h" || "$1" == "-help" ]]; then
+  echo "Usage: displayline [-r] [-b] [-n] [-g] [-z] LINE PDFFILE [TEXSOURCEFILE]
+Options:
+-r, -revert      Revert the file from disk if it was open
+-b, -readingbar  Indicate the line using the reading bar
+-n, -noselect    Do not select the line
+-g, -background  Do not bring Skim to the foreground
+-z, -zerobased   LINE is zero-based rather than one-based"
+  exit 0
+fi
+
+# get arguments
+revert=
+reading_bar=
+no_select=
+activate="activate"
+zerobased=
+from_source=
+while [[ "${1:0:1}" == "-" ]]; do
+  if [[ "$1" == "-r" || "$1" == "-revert" ]]; then
+    revert="try
+      set theDocs to get documents whose path is thePath
+      if (count of theDocs) > 0 then revert theDocs
+    end try"
+  elif [[ "$1" == "-b" || "$1" == "-readingbar" ]]; then
+    reading_bar="with showing reading bar"
+  elif [[ "$1" == "-n" || "$1" == "-noselect" ]]; then
+    no_select="without selecting"
+  elif [[ "$1" == "-g" || "$1" == "-background" ]]; then
+    activate=
+  elif [[ "$1" == "-z" || "$1" == "-zerobased" ]]; then
+    zerobased=1
+  fi
+  shift
+done
+line=$1
+file="$2"
+shopt -s extglob
+[[ $# -gt 2 ]] && src="$3" || src=
+
+# expand relative paths
+[[ "${file:0:1}" == "/" ]] || file="${PWD}/${file}"
+[[ -z "${src}" || "${src:0:1}" == "/" ]] || src="${PWD}/${src}"
+
+[[ -z "${src}" ]] || from_source="from POSIX file \"${src}\""
+
+[[ -z ${zerobased} ]] || (( line+=1 ))
+
+# run AppleScript
+/usr/bin/osascript << EOF
+  set theFile to POSIX file "${file}"
+  set thePath to POSIX path of (theFile as alias)
+  tell application "Skim"
+    ${revert}
+    open theFile
+    set theDocs to get documents whose path is thePath
+    if (count of theDocs) = 0 then set theDocs to {document 1}
+    set theDoc to contents of item 1 of theDocs
+    go theDoc to TeX line ${line} ${from_source} ${reading_bar} ${no_select}
+    ${activate}
+  end tell
+EOF

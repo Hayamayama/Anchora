@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0" toolsVersion="19529" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES">
+    <dependencies>
+        <deployment identifier="macosx"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="19529"/>
+        <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
+    </dependencies>
+    <objects>
+        <customObject id="-2" userLabel="File's Owner" customClass="SKDownloadPreferenceController">
+            <connections>
+                <outlet property="doneButton" destination="5" id="27"/>
+                <outlet property="downloadsFolderPopUp" destination="32" id="43"/>
+                <outlet property="window" destination="3" id="15"/>
+            </connections>
+        </customObject>
+        <customObject id="-1" userLabel="First Responder" customClass="FirstResponder"/>
+        <customObject id="-3" userLabel="Application" customClass="NSObject"/>
+        <window allowsToolTipsWhenApplicationIsInactive="NO" autorecalculatesKeyViewLoop="NO" restorable="NO" releasedWhenClosed="NO" visibleAtLaunch="NO" animationBehavior="default" id="3" userLabel="Panel" customClass="NSPanel">
+            <windowStyleMask key="styleMask" titled="YES" closable="YES"/>
+            <windowPositionMask key="initialPositionMask" leftStrut="YES" rightStrut="YES" topStrut="YES" bottomStrut="YES"/>
+            <rect key="contentRect" x="396" y="342" width="400" height="164"/>
+            <rect key="screenRect" x="0.0" y="0.0" width="1280" height="775"/>
+            <view key="contentView" id="4">
+                <rect key="frame" x="0.0" y="0.0" width="406" height="168"/>
+                <autoresizingMask key="autoresizingMask"/>
+                <subviews>
+                    <button horizontalHuggingPriority="750" verticalHuggingPriority="750" imageHugsTitle="YES" translatesAutoresizingMaskIntoConstraints="NO" id="8" userLabel="Show Downloads Check Button">
+                        <rect key="frame" x="18" y="131" width="329" height="18"/>
+                        <buttonCell key="cell" type="check" title="Show Downloads window when downloading a file" bezelStyle="regularSquare" imagePosition="left" alignment="left" inset="2" id="9">
+                            <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
+                            <font key="font" metaFont="system"/>
+                        </buttonCell>
+                        <connections>
+                            <accessibilityConnection property="link" destination="7" id="14"/>
+                            <binding destination="18" name="value" keyPath="values.SKAutoOpenDownloadsWindow" id="19"/>
+                        </connections>
+                    </button>
+                    <button horizontalHuggingPriority="750" verticalHuggingPriority="750" imageHugsTitle="YES" translatesAutoresizingMaskIntoConstraints="NO" id="7" userLabel="Remove Downloads Check Button">
+                        <rect key="frame" x="18" y="109" width="303" height="18"/>
+                        <buttonCell key="cell" type="check" title="Remove download when finished successfully" bezelStyle="regularSquare" imagePosition="left" alignment="left" inset="2" id="10">
+                            <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
+                            <font key="font" metaFont="system"/>
+                        </buttonCell>
+                        <connections>
+                            <accessibilityConnection property="link" destination="6" id="13"/>
+                            <binding destination="18" name="value" keyPath="values.SKAutoRemoveFinishedDownloads" id="20"/>
+                        </connections>
+                    </button>
+                    <button horizontalHuggingPriority="750" verticalHuggingPriority="750" imageHugsTitle="YES" translatesAutoresizingMaskIntoConstraints="NO" id="6" userLabel="Hide Downloads Check Button">
+                        <rect key="frame" x="38" y="87" width="348" height="18"/>
+                        <buttonCell key="cell" type="check" title="Hide Downloads window when all downloads finished" bezelStyle="regularSquare" imagePosition="left" alignment="left" inset="2" id="11">
+                            <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
+                            <font key="font" metaFont="system"/>
+                        </buttonCell>
+                        <connections>
+                            <binding destination="18" name="value" keyPath="values.SKAutoCloseDownloadsWindow" id="21"/>
+                            <binding destination="18" name="enabled" keyPath="values.SKAutoRemoveFinishedDownloads" id="29"/>
+                        </connections>
+                    </button>
+                    <button verticalHuggingPriority="750" imageHugsTitle="YES" translatesAutoresizingMaskIntoConstraints="NO" id="5">
+                        <rect key="frame" x="327" y="13" width="66" height="32"/>
+                        <buttonCell key="cell" type="push" title="Done" bezelStyle="rounded" alignment="center" borderStyle="border" inset="2" id="12">
+                            <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
+                            <font key="font" metaFont="system"/>
+                            <string key="keyEquivalent" base64-UTF8="YES">
+DQ
+</string>
+                        </buttonCell>
+                        <connections>
+                            <action selector="dismissSheet:" target="-2" id="17"/>
+                        </connections>
+                    </button>
+                    <textField horizontalHuggingPriority="750" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="30" userLabel="Downloads folder:">
+                        <rect key="frame" x="18" y="63" width="114" height="16"/>
+                        <textFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="Downloads folder:" id="31">
+                            <font key="font" metaFont="system"/>
+                            <color key="textColor" name="controlTextColor" catalog="System" colorSpace="catalog"/>
+                            <color key="backgroundColor" name="controlColor" catalog="System" colorSpace="catalog"/>
+                        </textFieldCell>
+                    </textField>
+                    <popUpButton verticalHuggingPriority="750" imageHugsTitle="YES" translatesAutoresizingMaskIntoConstraints="NO" id="32">
+                        <rect key="frame" x="135" y="56" width="207" height="25"/>
+                        <constraints>
+                            <constraint firstAttribute="width" relation="greaterThanOrEqual" constant="200" id="Eom-Zf-Sga"/>
+                        </constraints>
+                        <popUpButtonCell key="cell" type="push" bezelStyle="rounded" alignment="left" lineBreakMode="truncatingTail" state="on" borderStyle="borderAndBezel" imageScaling="proportionallyDown" inset="2" selectedItem="42" id="33">
+                            <behavior key="behavior" lightByBackground="YES" lightByGray="YES"/>
+                            <font key="font" metaFont="menu"/>
+                            <menu key="menu" id="34">
+                                <items>
+                                    <menuItem state="on" id="42">
+                                        <modifierMask key="keyEquivalentModifierMask"/>
+                                    </menuItem>
+                                    <menuItem isSeparatorItem="YES" id="38"/>
+                                    <menuItem title="Other…" id="37"/>
+                                </items>
+                            </menu>
+                        </popUpButtonCell>
+                        <connections>
+                            <accessibilityConnection property="title" destination="30" id="44"/>
+                            <action selector="chooseDownloadsFolder:" target="-2" id="41"/>
+                        </connections>
+                    </popUpButton>
+                </subviews>
+                <constraints>
+                    <constraint firstAttribute="bottom" secondItem="5" secondAttribute="bottom" constant="20" symbolic="YES" id="0cW-eB-wER"/>
+                    <constraint firstItem="8" firstAttribute="leading" secondItem="4" secondAttribute="leading" constant="20" symbolic="YES" id="84c-LY-HOF"/>
+                    <constraint firstItem="8" firstAttribute="top" secondItem="4" secondAttribute="top" constant="20" symbolic="YES" id="E44-2B-rY8"/>
+                    <constraint firstItem="6" firstAttribute="top" secondItem="7" secondAttribute="bottom" constant="6" symbolic="YES" id="FoO-Lb-nkO"/>
+                    <constraint firstItem="7" firstAttribute="top" secondItem="8" secondAttribute="bottom" constant="6" symbolic="YES" id="Gp8-Yv-m3e"/>
+                    <constraint firstAttribute="trailing" relation="greaterThanOrEqual" secondItem="7" secondAttribute="trailing" constant="20" symbolic="YES" id="HWU-W0-8lW"/>
+                    <constraint firstItem="32" firstAttribute="top" secondItem="6" secondAttribute="bottom" constant="8" id="Htb-FQ-rik"/>
+                    <constraint firstAttribute="trailing" relation="greaterThanOrEqual" secondItem="8" secondAttribute="trailing" constant="20" symbolic="YES" id="MYt-jV-PVT"/>
+                    <constraint firstAttribute="trailing" relation="greaterThanOrEqual" secondItem="6" secondAttribute="trailing" constant="20" symbolic="YES" id="OC2-bS-Nzl"/>
+                    <constraint firstItem="32" firstAttribute="baseline" secondItem="30" secondAttribute="firstBaseline" id="WBU-s1-qKL"/>
+                    <constraint firstItem="32" firstAttribute="leading" secondItem="30" secondAttribute="trailing" constant="8" symbolic="YES" id="ame-Ci-QVn"/>
+                    <constraint firstAttribute="trailing" relation="greaterThanOrEqual" secondItem="32" secondAttribute="trailing" constant="20" symbolic="YES" id="eAe-4e-KyN"/>
+                    <constraint firstItem="5" firstAttribute="top" secondItem="32" secondAttribute="bottom" constant="20" id="jJC-aG-C0s"/>
+                    <constraint firstItem="8" firstAttribute="leading" secondItem="7" secondAttribute="leading" id="kgx-TS-yye"/>
+                    <constraint firstItem="30" firstAttribute="baseline" secondItem="32" secondAttribute="baseline" id="mIp-Az-kIe"/>
+                    <constraint firstItem="6" firstAttribute="leading" secondItem="4" secondAttribute="leading" constant="40" id="p5I-Lp-r5o"/>
+                    <constraint firstItem="30" firstAttribute="leading" secondItem="4" secondAttribute="leading" constant="20" symbolic="YES" id="q9c-dJ-vtJ"/>
+                    <constraint firstAttribute="trailing" secondItem="5" secondAttribute="trailing" constant="20" symbolic="YES" id="siB-eA-tCZ"/>
+                    <constraint firstAttribute="trailing" secondItem="6" secondAttribute="trailing" priority="749" constant="20" symbolic="YES" id="yer-6r-wEY"/>
+                </constraints>
+            </view>
+            <connections>
+                <outlet property="delegate" destination="-2" id="16"/>
+            </connections>
+            <point key="canvasLocation" x="139" y="147"/>
+        </window>
+        <userDefaultsController representsSharedInstance="YES" id="18"/>
+    </objects>
+</document>

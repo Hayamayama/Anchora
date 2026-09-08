@@ -1,0 +1,35 @@
+# macOS Finder metadata
+.DS_Store
+**/.DS_Store
+
+# Xcode per-user state and generated workspace data
+xcuserdata/
+**/xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+**/project.xcworkspace/xcuserdata/
+
+# Xcode / Swift build products
+DerivedData/
+build/
+.build/
+*.xcresult
+*.dSYM
+*.dSYM.zip
+*.ipa
+
+# Locally packaged apps and GitHub Release artifacts.
+# Upload these to GitHub Releases; do not commit binary app bundles.
+Distribution/
+
+# Local secrets. Anchora stores its API key in macOS Keychain instead.
+.env
+.env.*
+*.xcconfig.local
+
+# Tool caches and logs
+.swiftpm/
+Pods/
+Carthage/Build/
+*.log
