@@ -38,23 +38,38 @@ public final class AnchoraCapture: NSObject {
 
     // MARK: - Rendering
 
-    /// `page.draw(with:to:)` places the display box's origin at the context
-    /// origin, so a page point lands at `p - bounds.origin`.  A rectangle
-    /// reported by the view is in the page's own coordinates and still carries
-    /// that origin, so it has to be subtracted here too.  Slide decks exported
-    /// to PDF routinely have a box that does not start at zero, and without
-    /// this the captured region is displaced by exactly that origin -- far
-    /// enough on a real deck to capture the slide title instead of the block
-    /// the reader dragged around.
-    static func renderTranslation(for rect: NSRect, pageBounds: NSRect) -> CGPoint {
-        CGPoint(x: -(rect.minX - pageBounds.minX), y: -(rect.minY - pageBounds.minY))
+    /// Maps a rectangle in the page's own coordinates onto what drawing
+    /// actually produces.
+    ///
+    /// Two things have to be undone.  `page.draw(with:to:)` places the display
+    /// box's origin at the context origin, so a page point lands at
+    /// `p - bounds.origin`.  And it applies the page's rotation, while
+    /// `bounds(for:)` and the rectangle the view reports are both in the
+    /// page's *unrotated* space -- a 90-degree page reports bounds of
+    /// 600 x 800 and hands back a portrait rectangle even though it displays
+    /// landscape.  Presentation decks are routinely stored this way, and
+    /// without the mapping a drag lands somewhere else entirely on the slide.
+    static func renderRect(for rect: NSRect, pageBounds: NSRect, rotation: Int) -> NSRect {
+        let r = rect.offsetBy(dx: -pageBounds.minX, dy: -pageBounds.minY)
+        let width = pageBounds.width, height = pageBounds.height
+        switch ((rotation % 360) + 360) % 360 {
+        case 90:
+            return NSRect(x: r.minY, y: width - r.maxX, width: r.height, height: r.width)
+        case 180:
+            return NSRect(x: width - r.maxX, y: height - r.maxY, width: r.width, height: r.height)
+        case 270:
+            return NSRect(x: height - r.maxY, y: r.minX, width: r.height, height: r.width)
+        default:
+            return r
+        }
     }
 
     private static func render(page: PDFPage, box: PDFDisplayBox, rect: NSRect, scale requestedScale: CGFloat) -> NSBitmapImageRep? {
-        guard rect.isEmpty == false else { return nil }
-        let scale = min(requestedScale, maximumPixelsPerSide / max(rect.width, rect.height))
-        let pixelsWide = Int(ceil(rect.width * scale))
-        let pixelsHigh = Int(ceil(rect.height * scale))
+        let drawRect = renderRect(for: rect, pageBounds: page.bounds(for: box), rotation: page.rotation)
+        guard drawRect.isEmpty == false else { return nil }
+        let scale = min(requestedScale, maximumPixelsPerSide / max(drawRect.width, drawRect.height))
+        let pixelsWide = Int(ceil(drawRect.width * scale))
+        let pixelsHigh = Int(ceil(drawRect.height * scale))
         guard pixelsWide > 0, pixelsHigh > 0,
               let imageRep = NSBitmapImageRep(bitmapDataPlanes: nil,
                                               pixelsWide: pixelsWide, pixelsHigh: pixelsHigh,
@@ -69,8 +84,7 @@ public final class AnchoraCapture: NSObject {
         context.setFillColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0)
         context.fill(CGRect(x: 0, y: 0, width: pixelsWide, height: pixelsHigh))
         context.scaleBy(x: scale, y: scale)
-        let translation = renderTranslation(for: rect, pageBounds: page.bounds(for: box))
-        context.translateBy(x: translation.x, y: translation.y)
+        context.translateBy(x: -drawRect.minX, y: -drawRect.minY)
         page.draw(with: box, to: context)
         return imageRep
     }

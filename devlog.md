@@ -436,6 +436,22 @@ Paper Map 的段落內容維持既有的 evidence 標示與 Source quote 連結�
 
 版本 `1.3.3 (8)`；測試 131 個檢查。
 
+### 1.3.4 — 擷取區域沒有考慮頁面旋轉
+
+1.3.3 修的 box 原點只是問題的一半，使用者提供的三張截圖給出了決定性線索。
+
+**診斷。** 比對 Skim 狀態列回報的選取尺寸與截圖中可見的選取框：三張全部要把**寬高對調**才吻合（230×327 對 1.40、192×395 對 2.04、121×568 對 4.47）。那是頁面旋轉的特徵。
+
+**根因。** `SKPDFView` 以 `convertPoint:toPage:` 儲存選取矩形，那是 PDFKit 的**未旋轉**頁面座標；`page.bounds(for:)` 同樣回傳未旋轉尺寸（旋轉 90° 的頁面仍回報 600×800）。但 `page.draw(with:to:)` **會**套用旋轉。因此繪製輸出在旋轉後的空間，而矩形與 bounds 在未旋轉空間，兩者不一致。
+
+**驗證。** 以四種旋轉、三個在 x 軸刻意不對稱的目標（好讓「旋轉」與「單純轉置」給出不同答案）做端到端測試：套用旋轉轉換後 12/12 全部正確，單純轉置則錯得五花八門。另外用使用者截圖 3 的實際數字驗算：回報的 `121 × 568 @ (383, 177)` 經 90° 轉換後落在頁面 x 22%–94%、y 63%–82%，與可見選取框的 20%–98%、62%–83% 相符。
+
+**修正。** `AnchoraCapture.renderRect(for:pageBounds:rotation:)` 一次處理兩件事 —— 扣掉 box 原點，並依 0／90／180／270 映射矩形；旋轉四分之一圈時畫布長寬也隨之對調。1.3.3 的 `renderTranslation` 被它取代。加了七個回歸測試涵蓋四種旋轉、超過一圈與負角度的正規化、原點偏移，以及旋轉頁面的整頁擷取。
+
+**影響範圍同 1.3.3**：OCR、`Command + Option` 圖像擷取、整頁摘要與 Scientific 的 `Figure` 共用這條路徑。使用者回報 `Command + Option` 當時看起來正常 —— 兩者用的是同一段程式碼與同一個矩形，所以那份圖其實同樣是偏移的，只是偏移後的畫面仍像一張投影片，不容易察覺。
+
+版本 `1.3.4 (9)`；測試 138 個檢查。
+
 ---
 
 ## 目前可用功能
@@ -507,8 +523,8 @@ codesign --verify --deep --strict --verbose=2 Distribution/PDFBuddy.app
 ## 發行位置
 
 - Release app：`Distribution/Anchora.app`
-- Release 附件：`Distribution/Anchora-1.3.3-macos-arm64.zip`（8.6 MB）
-- 版本：`1.3.3 (8)`
+- Release 附件：`Distribution/Anchora-1.3.4-macos-arm64.zip`（8.6 MB）
+- 版本：`1.3.4 (9)`
 - 最低系統：macOS 14.0
 - 大小：約 17 MB
 - Bundle ID：`com.kris.anchora`

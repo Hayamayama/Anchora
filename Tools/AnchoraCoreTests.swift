@@ -426,28 +426,63 @@ func testRecognitionLanguageResolution() {
 
 // MARK: - Capture geometry
 
-/// A slide deck exported to PDF routinely has a display box that does not
-/// start at zero.  Drawing places that origin at the context origin, so a
-/// rectangle reported in page coordinates has to have it subtracted as well --
-/// otherwise the capture is displaced by exactly the box origin, which on a
-/// real deck was far enough to read the slide title instead of the block the
-/// reader dragged around.
-func testCaptureTranslationSubtractsTheBoxOrigin() {
-    let offsetBounds = CGRect(x: 50, y: 30, width: 600, height: 800)
-    expectEqual(AnchoraCapture.renderTranslation(for: CGRect(x: 85, y: 425, width: 530, height: 70),
-                                                 pageBounds: offsetBounds),
-                CGPoint(x: -35, y: -395),
-                "an offset box origin is subtracted from the region's own origin")
+/// Two things have to be undone before a page rectangle matches what drawing
+/// produces: the display box origin, and the page rotation.  A deck stored as
+/// portrait pages rotated 90 degrees reports an unrotated, portrait rectangle
+/// for a drag the reader made on a landscape slide.
+func testRenderRectUnrotatedPage() {
+    let bounds = CGRect(x: 0, y: 0, width: 600, height: 800)
+    expectEqual(AnchoraCapture.renderRect(for: CGRect(x: 30, y: 390, width: 540, height: 70),
+                                          pageBounds: bounds, rotation: 0),
+                CGRect(x: 30, y: 390, width: 540, height: 70),
+                "an unrotated page at the origin needs no mapping")
+}
 
-    expectEqual(AnchoraCapture.renderTranslation(for: offsetBounds, pageBounds: offsetBounds),
-                CGPoint(x: 0, y: 0),
-                "capturing the whole page needs no translation at all")
+func testRenderRectSubtractsTheBoxOrigin() {
+    let offset = CGRect(x: 50, y: 30, width: 600, height: 800)
+    expectEqual(AnchoraCapture.renderRect(for: CGRect(x: 85, y: 425, width: 530, height: 70),
+                                          pageBounds: offset, rotation: 0),
+                CGRect(x: 35, y: 395, width: 530, height: 70),
+                "an offset box origin is subtracted")
+    expectEqual(AnchoraCapture.renderRect(for: offset, pageBounds: offset, rotation: 0),
+                CGRect(x: 0, y: 0, width: 600, height: 800),
+                "capturing the whole page starts at the context origin")
+}
 
-    let zeroBounds = CGRect(x: 0, y: 0, width: 600, height: 800)
-    expectEqual(AnchoraCapture.renderTranslation(for: CGRect(x: 85, y: 425, width: 530, height: 70),
-                                                 pageBounds: zeroBounds),
-                CGPoint(x: -85, y: -425),
-                "a page that already starts at zero is unaffected")
+func testRenderRectRotations() {
+    let bounds = CGRect(x: 0, y: 0, width: 600, height: 800)
+    // A band across the middle of the unrotated page, deliberately asymmetric
+    // in x so a rotation and a mere transpose give different answers.
+    let band = CGRect(x: 25, y: 595, width: 210, height: 60)
+
+    expectEqual(AnchoraCapture.renderRect(for: band, pageBounds: bounds, rotation: 90),
+                CGRect(x: 595, y: 365, width: 60, height: 210),
+                "90 degrees maps x from y and y from the far edge of x")
+    expectEqual(AnchoraCapture.renderRect(for: band, pageBounds: bounds, rotation: 180),
+                CGRect(x: 365, y: 145, width: 210, height: 60),
+                "180 degrees mirrors both axes and keeps the shape")
+    expectEqual(AnchoraCapture.renderRect(for: band, pageBounds: bounds, rotation: 270),
+                CGRect(x: 145, y: 25, width: 60, height: 210),
+                "270 degrees is the opposite quarter turn")
+
+    expectEqual(AnchoraCapture.renderRect(for: band, pageBounds: bounds, rotation: 450),
+                AnchoraCapture.renderRect(for: band, pageBounds: bounds, rotation: 90),
+                "a rotation beyond a full turn is normalised")
+    expectEqual(AnchoraCapture.renderRect(for: band, pageBounds: bounds, rotation: -90),
+                AnchoraCapture.renderRect(for: band, pageBounds: bounds, rotation: 270),
+                "a negative rotation is normalised")
+}
+
+/// A quarter-turned page draws into a canvas whose sides are swapped, so a
+/// whole-page capture has to swap them too.
+func testRenderRectWholePageOnARotatedPage() {
+    let bounds = CGRect(x: 0, y: 0, width: 600, height: 800)
+    expectEqual(AnchoraCapture.renderRect(for: bounds, pageBounds: bounds, rotation: 90),
+                CGRect(x: 0, y: 0, width: 800, height: 600),
+                "the whole page fills a landscape canvas when the page is quarter-turned")
+    expectEqual(AnchoraCapture.renderRect(for: bounds, pageBounds: bounds, rotation: 180),
+                CGRect(x: 0, y: 0, width: 600, height: 800),
+                "a half turn keeps the canvas shape")
 }
 
 // MARK: - Selection and turn
@@ -547,7 +582,10 @@ enum AnchoraCoreTests {
         testFormattingInstructionsMatchTheRenderer()
         testTextQualityHeuristic()
         testRecognitionLanguageResolution()
-        testCaptureTranslationSubtractsTheBoxOrigin()
+        testRenderRectUnrotatedPage()
+        testRenderRectSubtractsTheBoxOrigin()
+        testRenderRectRotations()
+        testRenderRectWholePageOnARotatedPage()
         testSelectionGenerationAdvances()
         testFinishingRecognitionKeepsItsGeneration()
         testFinishingRecognitionWithNothing()
