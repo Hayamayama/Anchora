@@ -461,6 +461,92 @@ func testMessagesWithNothingToPin() {
     expect(model.messages[1].turn == nil, "a message that was not an answer has nothing to pin")
 }
 
+// MARK: - Inline markdown
+
+private func spans(_ attributed: AttributedString, _ intent: InlinePresentationIntent) -> [String] {
+    attributed.runs.compactMap { run in
+        run.inlinePresentationIntent?.contains(intent) == true
+            ? String(attributed[run.range].characters) : nil
+    }
+}
+
+private func plain(_ attributed: AttributedString) -> String {
+    String(attributed.characters)
+}
+
+/// CommonMark's flanking rules make emphasis unusable next to Chinese: the
+/// closing run here is preceded by punctuation and followed by a Han
+/// character, which disqualifies it, so the asterisks rendered literally.
+func testEmphasisNextToChinese() {
+    let attributed = AnchoraMarkdown.inline("**橫膈膜 (diaphragm)**收縮時向下變平")
+    expectEqual(spans(attributed, .stronglyEmphasized), ["橫膈膜 (diaphragm)"],
+                "bold closes even when punctuation precedes and a Han character follows")
+    expectEqual(plain(attributed), "橫膈膜 (diaphragm)收縮時向下變平",
+                "the asterisks are consumed rather than shown")
+
+    let italic = AnchoraMarkdown.inline("這是*重點*，請記住")
+    expectEqual(spans(italic, .emphasized), ["重點"], "italic closes before a full-width comma")
+    expect(plain(italic).contains("*") == false, "no stray asterisk is left behind")
+}
+
+func testEmphasisOrdinaryCases() {
+    expectEqual(spans(AnchoraMarkdown.inline("a **bold** b"), .stronglyEmphasized), ["bold"],
+                "bold between spaces still works")
+    expectEqual(spans(AnchoraMarkdown.inline("a *thin* b"), .emphasized), ["thin"],
+                "single asterisks are emphasis")
+    expectEqual(spans(AnchoraMarkdown.inline("a _thin_ b"), .emphasized), ["thin"],
+                "underscores are emphasis too")
+    expectEqual(plain(AnchoraMarkdown.inline("snake_case_name stays")), "snake_case_name stays",
+                "underscores inside a word are not emphasis")
+    expectEqual(plain(AnchoraMarkdown.inline("2 * 3 * 4")), "2 * 3 * 4",
+                "asterisks with space after them are multiplication, not emphasis")
+    expectEqual(plain(AnchoraMarkdown.inline(#"literal \*stars\* here"#)), "literal *stars* here",
+                "a backslash escapes an asterisk")
+}
+
+/// Every flush re-parses a partial answer, so half-written syntax must degrade.
+func testInlinePartialSyntax() {
+    expectEqual(plain(AnchoraMarkdown.inline("this is **half a bold span")),
+                "this is **half a bold span",
+                "an unclosed run stays exactly as written")
+    expectEqual(plain(AnchoraMarkdown.inline("an unclosed `code span")),
+                "an unclosed `code span",
+                "so does an unclosed code span")
+    expectEqual(plain(AnchoraMarkdown.inline("")), "", "an empty block is empty")
+}
+
+func testInlineCodeAndLinks() {
+    let code = AnchoraMarkdown.inline("set `n = 12` first")
+    expectEqual(spans(code, .code), ["n = 12"], "backticks mark code")
+    expectEqual(plain(code), "set n = 12 first", "the backticks themselves are consumed")
+
+    let link = AnchoraMarkdown.inline("see [the paper](https://example.org/x) for detail")
+    expectEqual(plain(link), "see the paper for detail", "link syntax is consumed")
+    expect(link.runs.contains { $0.link?.absoluteString == "https://example.org/x" },
+           "the destination becomes a real link")
+
+    let bare = AnchoraMarkdown.inline("source: https://example.org/x")
+    expect(bare.runs.contains { $0.link?.absoluteString == "https://example.org/x" },
+           "a bare URL is still clickable")
+}
+
+/// The Paper Map resolves these afterwards, so they must survive as text.
+func testCitationsAreNotLinks() {
+    let attributed = AnchoraMarkdown.inline("**Direct evidence:** the assay failed [PDF p. 4]")
+    expectEqual(spans(attributed, .stronglyEmphasized), ["Direct evidence:"], "the label is bold")
+    expectEqual(plain(attributed), "Direct evidence: the assay failed [PDF p. 4]",
+                "a bracket with no destination stays literal text")
+    expect(attributed.runs.allSatisfy { $0.link == nil }, "and is not turned into a link")
+}
+
+func testNestedEmphasis() {
+    let attributed = AnchoraMarkdown.inline("**bold with *inner* words**")
+    expectEqual(plain(attributed), "bold with inner words", "both levels are consumed")
+    expect(spans(attributed, .stronglyEmphasized).joined().contains("inner"),
+           "the inner run is still bold")
+    expect(spans(attributed, .emphasized) == ["inner"], "and additionally italic")
+}
+
 // MARK: - Header menu placement
 
 /// SwiftUI reports frames from the top left. NSHostingView is flipped so that
@@ -650,6 +736,12 @@ enum AnchoraCoreTests {
         testMarkdownPreservesCitations()
         testMarkdownPlainText()
         testFormattingInstructionsMatchTheRenderer()
+        testEmphasisNextToChinese()
+        testEmphasisOrdinaryCases()
+        testInlinePartialSyntax()
+        testInlineCodeAndLinks()
+        testCitationsAreNotLinks()
+        testNestedEmphasis()
         testTextQualityHeuristic()
         testRecognitionLanguageResolution()
         testRenderRectUnrotatedPage()

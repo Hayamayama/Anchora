@@ -145,14 +145,194 @@ public final class AnchoraMarkdown: NSObject {
 
     // MARK: - Inline spans
 
-    /// Bold, italic, `code` and links within a single block.  A half-written
-    /// span mid-stream (`**bold` with no closing marker) is left as literal
-    /// text rather than discarded.
+    /// Bold, italic, `code`, links and bare URLs within a single block.
+    ///
+    /// This does not use `AttributedString(markdown:)`, because CommonMark's
+    /// flanking rules make emphasis unusable next to Chinese text: in
+    /// `**橫膈膜 (diaphragm)**收縮時` the closing run is preceded by punctuation
+    /// and followed by a Han character, which disqualifies it from closing, so
+    /// the whole thing renders as literal asterisks.  GitHub relaxed this for
+    /// CJK in 2017; CommonMark has not.  The rule here is the relaxed one: a
+    /// delimiter may open if what follows it is not whitespace, and may close
+    /// if what precedes it is not whitespace.
     public static func inline(_ text: String) -> AttributedString {
-        var options = AttributedString.MarkdownParsingOptions()
-        options.interpretedSyntax = .inlineOnlyPreservingWhitespace
-        options.failurePolicy = .returnPartiallyParsedIfPossible
-        return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
+        var result = AttributedString()
+        appendInline(Array(text), into: &result, intents: [], depth: 0)
+        return result
+    }
+
+    private static let emphasisDepthLimit = 4
+
+    private static func appendInline(_ characters: [Character],
+                                     into result: inout AttributedString,
+                                     intents: InlinePresentationIntent,
+                                     depth: Int) {
+        var literal = ""
+
+        func flushLiteral() {
+            guard literal.isEmpty == false else { return }
+            appendAutolinked(literal, into: &result, intents: intents)
+            literal = ""
+        }
+
+        var index = 0
+        while index < characters.count {
+            let character = characters[index]
+
+            // A backslash escapes the next character, so a literal asterisk
+            // survives.
+            if character == "\\", index + 1 < characters.count {
+                literal.append(characters[index + 1])
+                index += 2
+                continue
+            }
+
+            if character == "`", let span = codeSpan(characters, from: index) {
+                flushLiteral()
+                var code = AttributedString(span.text)
+                code.inlinePresentationIntent = intents.union(.code)
+                result.append(code)
+                index = span.end
+                continue
+            }
+
+            if character == "[", let link = linkSpan(characters, from: index) {
+                flushLiteral()
+                var inner = AttributedString()
+                appendInline(Array(link.text), into: &inner, intents: intents, depth: depth + 1)
+                if let url = URL(string: link.destination) {
+                    inner.link = url
+                }
+                result.append(inner)
+                index = link.end
+                continue
+            }
+
+            if depth < emphasisDepthLimit,
+               character == "*" || character == "_",
+               let emphasis = emphasisSpan(characters, from: index) {
+                flushLiteral()
+                appendInline(Array(emphasis.text), into: &result,
+                             intents: intents.union(emphasis.intent), depth: depth + 1)
+                index = emphasis.end
+                continue
+            }
+
+            literal.append(character)
+            index += 1
+        }
+        flushLiteral()
+    }
+
+    // MARK: - Inline spans: pieces
+
+    private static func codeSpan(_ characters: [Character], from start: Int) -> (text: String, end: Int)? {
+        var run = 0
+        while start + run < characters.count, characters[start + run] == "`" { run += 1 }
+        var index = start + run
+        while index < characters.count {
+            if characters[index] == "`" {
+                var closing = 0
+                while index + closing < characters.count, characters[index + closing] == "`" { closing += 1 }
+                if closing == run {
+                    return (String(characters[(start + run)..<index]), index + closing)
+                }
+                index += closing
+            } else {
+                index += 1
+            }
+        }
+        return nil
+    }
+
+    private static func linkSpan(_ characters: [Character], from start: Int) -> (text: String, destination: String, end: Int)? {
+        var index = start + 1
+        var depth = 1
+        while index < characters.count, depth > 0 {
+            if characters[index] == "\\" { index += 2; continue }
+            if characters[index] == "[" { depth += 1 }
+            if characters[index] == "]" { depth -= 1 }
+            index += 1
+        }
+        // A citation such as "[PDF p. 4]" has no destination and must stay text.
+        guard depth == 0, index < characters.count, characters[index] == "(" else { return nil }
+        let textEnd = index - 1
+        index += 1
+        let destinationStart = index
+        while index < characters.count, characters[index] != ")" { index += 1 }
+        guard index < characters.count else { return nil }
+        return (String(characters[(start + 1)..<textEnd]),
+                String(characters[destinationStart..<index]).trimmingCharacters(in: .whitespaces),
+                index + 1)
+    }
+
+    private static func emphasisSpan(_ characters: [Character], from start: Int) -> (text: String, intent: InlinePresentationIntent, end: Int)? {
+        let marker = characters[start]
+        var run = 0
+        while start + run < characters.count, characters[start + run] == marker { run += 1 }
+        let width = min(run, 2)
+
+        // The relaxed opening rule: something must follow, and it must not be
+        // whitespace.
+        let openEnd = start + width
+        guard openEnd < characters.count, characters[openEnd].isWhitespace == false else { return nil }
+        // "snake_case" is not emphasis.
+        if marker == "_", start > 0, characters[start - 1].isLetter || characters[start - 1].isNumber { return nil }
+
+        var index = openEnd
+        while index < characters.count {
+            if characters[index] == "\\" { index += 2; continue }
+            guard characters[index] == marker else { index += 1; continue }
+            var closing = 0
+            while index + closing < characters.count, characters[index + closing] == marker { closing += 1 }
+            // The relaxed closing rule: what precedes must not be whitespace.
+            let precedingIsWhitespace = characters[index - 1].isWhitespace
+            let underscoreInsideWord = marker == "_" && index + closing < characters.count
+                && (characters[index + closing].isLetter || characters[index + closing].isNumber)
+            if closing >= width, precedingIsWhitespace == false, underscoreInsideWord == false, index > openEnd {
+                return (String(characters[openEnd..<index]),
+                        width == 2 ? .stronglyEmphasized : .emphasized,
+                        index + width)
+            }
+            index += closing
+        }
+        return nil
+    }
+
+    /// A bare http(s) URL in an answer should still be clickable.
+    private static func appendAutolinked(_ text: String,
+                                         into result: inout AttributedString,
+                                         intents: InlinePresentationIntent) {
+        func styled(_ piece: String) -> AttributedString {
+            var attributed = AttributedString(piece)
+            if intents.isEmpty == false {
+                attributed.inlinePresentationIntent = intents
+            }
+            return attributed
+        }
+
+        guard text.contains("http"),
+              let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+        else {
+            result.append(styled(text))
+            return
+        }
+
+        let nsText = text as NSString
+        var location = 0
+        for match in detector.matches(in: text, range: NSRange(location: 0, length: nsText.length)) {
+            guard let url = match.url else { continue }
+            if match.range.location > location {
+                result.append(styled(nsText.substring(with: NSRange(location: location, length: match.range.location - location))))
+            }
+            var link = styled(nsText.substring(with: match.range))
+            link.link = url
+            result.append(link)
+            location = NSMaxRange(match.range)
+        }
+        if location < nsText.length {
+            result.append(styled(nsText.substring(from: location)))
+        }
     }
 
     // MARK: - Plain text

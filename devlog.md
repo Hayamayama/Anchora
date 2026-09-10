@@ -497,6 +497,20 @@ Release 建置 0 錯誤。`SKPDFView.m` 有 23 個警告，全部是 Skim 既有
 
 版本 `1.4.1 (11)`；測試 149 個檢查。
 
+### 1.4.2 — 中文旁的粗體渲染不出來
+
+`**橫膈膜 (diaphragm)**收縮時` 顯示成字面的星號。
+
+**根因是 CommonMark 的 flanking 規則。** 收尾的 `**` 前面是標點 `)`、後面是漢字：依規則，被標點包圍且後面不是空白或標點的分隔符不具備「可結束」資格，因此整段當作字面文字。中文寫作幾乎不會在粗體後面加空白，所以只要是「粗體 + 中文」就會踩到。GitHub 在 2017 年為 CJK 放寬了這條，CommonMark 至今沒有，而 `AttributedString(markdown:)` 走的是嚴格規則。
+
+**修正方式是自己解析行內語法**，不再使用 `AttributedString(markdown:)`。放寬後的規則是：分隔符後面不是空白就可以開始，前面不是空白就可以結束。涵蓋粗體、斜體、行內 code、連結與裸露的 http(s) 網址；反斜線跳脫、未閉合的分隔符（串流途中必然出現）維持字面輸出。
+
+保留的既有行為：`snake_case` 不是斜體、`2 * 3 * 4` 不是強調、`[PDF p. 4]` 後面沒有括號就不是連結（Paper Map 之後還要靠它解析）。
+
+24 個新測試，包含中文相鄰的粗體與斜體、巢狀強調、串流途中的半成品語法、citation 不被吃掉，以及裸露網址仍可點擊。
+
+版本 `1.4.2 (12)`；測試 173 個檢查。
+
 ---
 
 ## 目前可用功能
@@ -568,8 +582,8 @@ codesign --verify --deep --strict --verbose=2 Distribution/PDFBuddy.app
 ## 發行位置
 
 - Release app：`Distribution/Anchora.app`
-- Release 附件：`Distribution/Anchora-1.4.1-macos-arm64.zip`（8.6 MB）
-- 版本：`1.4.1 (11)`
+- Release 附件：`Distribution/Anchora-1.4.2-macos-arm64.zip`（8.6 MB）
+- 版本：`1.4.2 (12)`
 - 最低系統：macOS 14.0
 - 大小：約 17 MB
 - Bundle ID：`com.kris.anchora`
