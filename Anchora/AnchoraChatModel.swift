@@ -23,6 +23,9 @@ public struct AnchoraChatMessage: Identifiable {
     /// e.g. "p. 3, 4" — nil when the answer has no traceable PDF page.
     public var sourceLabel: String?
     public var sourcePageIndex: Int?
+    /// The turn this answer came from, so it can still be pinned after later
+    /// questions have moved on.  Nil for anything that is not a finished answer.
+    public var turn: AnchoraTurn?
     /// True while this bubble is still showing a request phase rather than
     /// model output ("Uploading PDF to Anchora…").
     public var isPlaceholder: Bool = false
@@ -46,6 +49,11 @@ public final class AnchoraChatModel: NSObject, ObservableObject {
 
     /// Called when the reader clicks an answer's PDF source chip.
     @objc public var onOpenPage: ((Int) -> Void)?
+    /// Per-answer actions.  These act on the answer they were shown under, not
+    /// on whatever happens to be the latest one.
+    @objc public var onCopy: ((String) -> Void)?
+    @objc public var onPinAnchor: ((AnchoraTurn) -> Void)?
+    @objc public var onPinTextNote: ((AnchoraTurn) -> Void)?
 
     private var streamingIndex: Int?
 
@@ -82,11 +90,15 @@ public final class AnchoraChatModel: NSObject, ObservableObject {
     /// Adds the assistant bubble a turn will stream into.  It shows `status`
     /// until the first output arrives, so a long full-PDF upload never leaves
     /// an empty bubble on screen.
-    @objc public func beginStreamingMessage(status: String, sourceLabel: String?, sourcePageIndex: NSNumber?) {
+    @objc public func beginStreamingMessage(status: String,
+                                            sourceLabel: String?,
+                                            sourcePageIndex: NSNumber?,
+                                            turn: AnchoraTurn?) {
         messages.append(AnchoraChatMessage(kind: .assistant,
                                            text: status,
                                            sourceLabel: sourceLabel,
                                            sourcePageIndex: sourcePageIndex?.intValue,
+                                           turn: turn,
                                            isPlaceholder: true))
         streamingIndex = messages.count - 1
         touch()

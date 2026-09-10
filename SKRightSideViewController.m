@@ -66,7 +66,8 @@ static const NSUInteger SKAIStandardMaximumOutputTokens = 8000;
 static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
 
 @interface SKRightSideViewController ()
-@property (nonatomic, nullable, strong) NSTextView *aiContextTextView;
+@property (nonatomic, nullable, strong) AnchoraHeaderModel *aiHeaderModel;
+@property (nonatomic, nullable, strong) NSView *aiHeaderView;
 @property (nonatomic, nullable, strong) AnchoraComposerModel *aiComposerModel;
 // The transcript and the Paper Map navigator are SwiftUI.  AppKit owns only
 // their position and height in the sidebar; everything inside — wrapped text
@@ -74,8 +75,6 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
 @property (nonatomic, nullable, strong) AnchoraChatModel *aiChatModel;
 @property (nonatomic, nullable, strong) AnchoraPaperMapModel *aiPaperMapModel;
 @property (nonatomic, nullable, strong) NSView *aiChatView;
-@property (nonatomic, nullable, strong) NSTextField *aiTitleLabel, *aiSubtitleLabel, *aiContextLabel;
-@property (nonatomic, nullable, strong) NSSegmentedControl *aiReadingProfileControl;
 @property (nonatomic, nullable, strong) NSView *aiPaperMapCard;
 @property (nonatomic, nullable, strong) NSLayoutConstraint *aiPaperMapHeightConstraint;
 // The reader's live selection, and the snapshot the in-flight answer was
@@ -95,37 +94,6 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
 @implementation SKRightSideViewController
 
 @synthesize noteArrayController, noteOutlineView, snapshotArrayController, snapshotTableView, aiView;
-
-- (NSScrollView *)scrollViewWithTextView:(NSTextView **)textView {
-    NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSZeroRect];
-    [scrollView setBorderType:NSNoBorder];
-    [scrollView setHasVerticalScroller:YES];
-    [scrollView setAutohidesScrollers:YES];
-    [scrollView setDrawsBackground:NO];
-    [scrollView setTranslatesAutoresizingMaskIntoConstraints:NO];
-    NSTextView *view = [[NSTextView alloc] initWithFrame:NSZeroRect];
-    [view setEditable:NO];
-    [view setSelectable:YES];
-    [view setFont:[NSFont systemFontOfSize:[NSFont systemFontSize]]];
-    [view setTextContainerInset:NSMakeSize(6.0, 6.0)];
-    [view setDrawsBackground:NO];
-    [scrollView setDocumentView:view];
-    if (textView)
-        *textView = view;
-    return scrollView;
-}
-
-- (NSVisualEffectView *)aiCardView {
-    NSVisualEffectView *view = [[NSVisualEffectView alloc] initWithFrame:NSZeroRect];
-    [view setMaterial:NSVisualEffectMaterialContentBackground];
-    [view setBlendingMode:NSVisualEffectBlendingModeWithinWindow];
-    [view setState:NSVisualEffectStateActive];
-    [view setWantsLayer:YES];
-    [[view layer] setCornerRadius:12.0];
-    [[view layer] setMasksToBounds:YES];
-    [view setTranslatesAutoresizingMaskIntoConstraints:NO];
-    return view;
-}
 
 - (NSString *)sourceLabelForPageIndexes:(NSArray<NSNumber *> *)pageIndexes {
     if ([pageIndexes count] == 0)
@@ -236,7 +204,8 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
             // request starts, showing its phase until output arrives.
             [model beginStreamingMessageWithStatus:[self.aiTurn status] ?: @"Preparing request…"
                                        sourceLabel:[self sourceLabelForPageIndexes:sourcePageIndexes]
-                                   sourcePageIndex:[sourcePageIndexes firstObject]];
+                                   sourcePageIndex:[sourcePageIndexes firstObject]
+                                              turn:self.aiTurn];
         } else {
             [model appendAssistantMessage:text];
         }
@@ -305,21 +274,29 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
 - (void)updateAIReadingProfileInterface {
     AnchoraReadingProfile profile = [[AnchoraSettings sharedSettings] readingProfile];
     BOOL scientific = profile == AnchoraReadingProfileScientific;
-    [self.aiReadingProfileControl setSelectedSegment:scientific ? 1 : 0];
-    [self.aiTitleLabel setStringValue:scientific ? @"Anchora Scientific" : @"Anchora AI"];
-    [self.aiSubtitleLabel setStringValue:scientific ? @"Trace the evidence behind a paper" : @"Ask about what you are reading"];
-    [self.aiContextLabel setStringValue:scientific ? @"PAPER CONTEXT" : @"CONTEXT"];
+    [self.aiHeaderModel setProfileWithScientific:scientific
+                                           title:scientific ? @"Anchora Scientific" : @"Anchora AI"
+                                        subtitle:scientific ? @"Trace the evidence behind a paper" : @"Ask about what you are reading"
+                                    contextTitle:scientific ? @"PAPER CONTEXT" : @"CONTEXT"];
     [self.aiComposerModel setPlaceholderText:[AnchoraPrompts composerPlaceholderWithProfile:profile]];
     [self.aiComposerModel setQuickActionTitles:[AnchoraPrompts quickActionTitlesWithProfile:profile]
                                       tooltips:[AnchoraPrompts quickActionTooltipsWithProfile:profile]];
     if ([self.aiSelection hasContext] == NO && [self.aiSelection isRecognizingText] == NO)
-        [self.aiContextTextView setString:[AnchoraPrompts emptyContextMessageWithProfile:profile]];
+        [self.aiHeaderModel setContextText:[AnchoraPrompts emptyContextMessageWithProfile:profile]];
 }
 
-- (IBAction)changeAIReadingProfile:(id)sender {
-    NSInteger selectedSegment = [(NSSegmentedControl *)sender selectedSegment];
-    [[AnchoraSettings sharedSettings] setReadingProfile:selectedSegment == 1 ? AnchoraReadingProfileScientific : AnchoraReadingProfileStudy];
+- (void)changeAIReadingProfileToScientific:(BOOL)scientific {
+    [[AnchoraSettings sharedSettings] setReadingProfile:scientific ? AnchoraReadingProfileScientific : AnchoraReadingProfileStudy];
     [self updateAIReadingProfileInterface];
+}
+
+- (void)showAIMoreActionsFromHeader {
+    // The menu is still built here because it counts the document's notes and
+    // shows their colours.  Anchor it to the header's top-right corner.
+    NSView *header = self.aiHeaderView;
+    if (header == nil)
+        return;
+    [self showAIMoreActions:header];
 }
 
 - (void)buildAIInterface {
@@ -329,77 +306,16 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     [rootView setState:NSVisualEffectStateFollowsWindowActiveState];
     [rootView setTranslatesAutoresizingMaskIntoConstraints:NO];
 
-    NSStackView *header = [[NSStackView alloc] initWithFrame:NSZeroRect];
-    [header setOrientation:NSUserInterfaceLayoutOrientationVertical];
-    [header setAlignment:NSLayoutAttributeLeading];
-    [header setSpacing:8.0];
-    [header setTranslatesAutoresizingMaskIntoConstraints:NO];
+    AnchoraHeaderModel *headerModel = [[AnchoraHeaderModel alloc] init];
+    NSView *header = [AnchoraHosting headerViewWithModel:headerModel];
     [rootView addSubview:header];
     [NSLayoutConstraint activateConstraints:@[
-        [header.leadingAnchor constraintEqualToAnchor:rootView.leadingAnchor constant:16.0],
-        [header.trailingAnchor constraintEqualToAnchor:rootView.trailingAnchor constant:-16.0]
+        [header.leadingAnchor constraintEqualToAnchor:rootView.leadingAnchor constant:12.0],
+        [header.trailingAnchor constraintEqualToAnchor:rootView.trailingAnchor constant:-12.0],
+        [header.heightAnchor constraintEqualToConstant:[AnchoraHosting headerHeight]]
     ]];
     self.aiTopConstraint = [header.topAnchor constraintEqualToAnchor:rootView.topAnchor constant:12.0];
     self.aiTopConstraint.active = YES;
-
-    NSStackView *titleStack = [[NSStackView alloc] initWithFrame:NSZeroRect];
-    [titleStack setOrientation:NSUserInterfaceLayoutOrientationVertical];
-    [titleStack setAlignment:NSLayoutAttributeLeading];
-    [titleStack setSpacing:1.0];
-    NSTextField *title = [NSTextField labelWithString:@"Anchora AI"];
-    [title setFont:[NSFont boldSystemFontOfSize:16.0]];
-    [title setTextColor:[NSColor labelColor]];
-    NSTextField *subtitle = [NSTextField labelWithString:@"Ask about what you are reading"];
-    [subtitle setTextColor:[NSColor secondaryLabelColor]];
-    [subtitle setFont:[NSFont systemFontOfSize:11.0]];
-    [titleStack addArrangedSubview:title];
-    [titleStack addArrangedSubview:subtitle];
-    self.aiTitleLabel = title;
-    self.aiSubtitleLabel = subtitle;
-    NSStackView *titleRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
-    [titleRow setOrientation:NSUserInterfaceLayoutOrientationHorizontal];
-    [titleRow setAlignment:NSLayoutAttributeTop];
-    [titleRow addArrangedSubview:titleStack];
-    NSView *titleSpacer = [NSView new];
-    [titleSpacer setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
-    [titleRow addArrangedSubview:titleSpacer];
-    NSSegmentedControl *profileControl = [[NSSegmentedControl alloc] initWithFrame:NSZeroRect];
-    [profileControl setSegmentCount:2];
-    [profileControl setLabel:@"Study" forSegment:0];
-    [profileControl setLabel:@"Scientific" forSegment:1];
-    [profileControl setTrackingMode:NSSegmentSwitchTrackingSelectOne];
-    [profileControl setControlSize:NSControlSizeSmall];
-    [profileControl setTarget:self];
-    [profileControl setAction:@selector(changeAIReadingProfile:)];
-    [titleRow addArrangedSubview:profileControl];
-    self.aiReadingProfileControl = profileControl;
-    NSButton *moreButton = [NSButton buttonWithTitle:@"•••" target:self action:@selector(showAIMoreActions:)];
-    [moreButton setBezelStyle:NSBezelStyleAccessoryBarAction];
-    [moreButton setToolTip:@"PDF summary and API settings"];
-    [titleRow addArrangedSubview:moreButton];
-    [header addArrangedSubview:titleRow];
-
-    NSVisualEffectView *contextCard = [self aiCardView];
-    [rootView addSubview:contextCard];
-    NSTextField *contextLabel = [NSTextField labelWithString:@"CONTEXT"];
-    [contextLabel setTextColor:[NSColor secondaryLabelColor]];
-    [contextLabel setFont:[NSFont boldSystemFontOfSize:10.0]];
-    [contextLabel setTranslatesAutoresizingMaskIntoConstraints:NO];
-    [contextCard addSubview:contextLabel];
-    self.aiContextLabel = contextLabel;
-    NSTextView *contextTextView = nil;
-    NSScrollView *contextScrollView = [self scrollViewWithTextView:&contextTextView];
-    [contextTextView setFont:[NSFont systemFontOfSize:12.0]];
-    [contextTextView setTextColor:[NSColor labelColor]];
-    [contextCard addSubview:contextScrollView];
-    [NSLayoutConstraint activateConstraints:@[
-        [contextLabel.leadingAnchor constraintEqualToAnchor:contextCard.leadingAnchor constant:10.0],
-        [contextLabel.topAnchor constraintEqualToAnchor:contextCard.topAnchor constant:8.0],
-        [contextScrollView.leadingAnchor constraintEqualToAnchor:contextCard.leadingAnchor constant:4.0],
-        [contextScrollView.trailingAnchor constraintEqualToAnchor:contextCard.trailingAnchor constant:-4.0],
-        [contextScrollView.topAnchor constraintEqualToAnchor:contextLabel.bottomAnchor constant:1.0],
-        [contextScrollView.bottomAnchor constraintEqualToAnchor:contextCard.bottomAnchor constant:-5.0]
-    ]];
 
     // A paper map is a fixed-height navigator with its own scrollable detail
     // area.  It deliberately does not sit inside the chat view: large
@@ -422,13 +338,9 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     [rootView addSubview:composer positioned:NSWindowAbove relativeTo:chatView];
 
     [NSLayoutConstraint activateConstraints:@[
-        [contextCard.leadingAnchor constraintEqualToAnchor:rootView.leadingAnchor constant:12.0],
-        [contextCard.trailingAnchor constraintEqualToAnchor:rootView.trailingAnchor constant:-12.0],
-        [contextCard.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:10.0],
-        [contextCard.heightAnchor constraintEqualToConstant:86.0],
-        [paperMapCard.leadingAnchor constraintEqualToAnchor:contextCard.leadingAnchor],
-        [paperMapCard.trailingAnchor constraintEqualToAnchor:contextCard.trailingAnchor],
-        [paperMapCard.topAnchor constraintEqualToAnchor:contextCard.bottomAnchor constant:8.0],
+        [paperMapCard.leadingAnchor constraintEqualToAnchor:header.leadingAnchor],
+        [paperMapCard.trailingAnchor constraintEqualToAnchor:header.trailingAnchor],
+        [paperMapCard.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:8.0],
         [chatView.leadingAnchor constraintEqualToAnchor:rootView.leadingAnchor constant:8.0],
         [chatView.trailingAnchor constraintEqualToAnchor:rootView.trailingAnchor constant:-8.0],
         [chatView.topAnchor constraintEqualToAnchor:paperMapCard.bottomAnchor constant:8.0],
@@ -444,12 +356,13 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     ]];
 
     self.aiView = rootView;
-    self.aiContextTextView = contextTextView;
     self.aiPaperMapCard = paperMapCard;
     self.aiPaperMapModel = paperMapModel;
     self.aiPaperMapHeightConstraint = [paperMapCard.heightAnchor constraintEqualToConstant:0.0];
     self.aiPaperMapHeightConstraint.priority = NSLayoutPriorityRequired;
     self.aiPaperMapHeightConstraint.active = YES;
+    self.aiHeaderModel = headerModel;
+    self.aiHeaderView = header;
     self.aiChatView = chatView;
     self.aiChatModel = chatModel;
     self.aiComposerModel = composerModel;
@@ -457,6 +370,15 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     __weak SKRightSideViewController *weakSelf = self;
     [chatModel setOnOpenPage:^(NSInteger pageIndex) {
         [weakSelf goToPDFPageAtIndex:pageIndex];
+    }];
+    [chatModel setOnCopy:^(NSString *text) {
+        [weakSelf copyAnswerText:text];
+    }];
+    [chatModel setOnPinAnchor:^(AnchoraTurn *turn) {
+        [weakSelf pinTurn:turn asTextNote:NO];
+    }];
+    [chatModel setOnPinTextNote:^(AnchoraTurn *turn) {
+        [weakSelf pinTurn:turn asTextNote:YES];
     }];
     [paperMapModel setOnOpenPage:^(NSInteger pageIndex) {
         [weakSelf goToPDFPageAtIndex:pageIndex];
@@ -485,6 +407,12 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     }];
     [composerModel setOnWebVerifyChanged:^(BOOL enabled) {
         [weakSelf setWebVerificationEnabledFromComposer:enabled];
+    }];
+    [headerModel setOnProfileChange:^(BOOL scientific) {
+        [weakSelf changeAIReadingProfileToScientific:scientific];
+    }];
+    [headerModel setOnMoreActions:^{
+        [weakSelf showAIMoreActionsFromHeader];
     }];
     [self updateAIReadingProfileInterface];
     [self queueWelcomeMessage];
@@ -550,12 +478,12 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
 
 - (void)applySelection:(AnchoraSelection *)selection {
     self.aiSelection = selection;
-    [self.aiContextTextView setString:[selection contextDescription]];
+    [self.aiHeaderModel setContextText:[selection contextDescription]];
 }
 
 - (void)updateSelectionContext:(NSNotification *)notification {
     SKPDFView *pdfView = [mainController pdfView];
-    if (pdfView == nil || self.aiContextTextView == nil)
+    if (pdfView == nil || self.aiHeaderModel == nil)
         return;
 
     // Option-drag and Command-Option-drag each post their own notification
@@ -625,7 +553,7 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
 
     NSString *dataURL = [AnchoraCapture regionImageDataURLWithPage:page box:[pdfView displayBox] rect:pageRect];
     if ([dataURL length] == 0) {
-        [self.aiContextTextView setString:[AnchoraPrompts imageCaptureFailureMessage]];
+        [self.aiHeaderModel setContextText:[AnchoraPrompts imageCaptureFailureMessage]];
         return;
     }
     [self applySelection:[AnchoraSelection imageWithDataURL:dataURL
@@ -856,7 +784,7 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     [menu addItem:dashboardItem];
     [menu addItem:[NSMenuItem separatorItem]];
     [menu addItemWithTitle:@"Set OpenAI API Key…" action:@selector(configureOpenAIAPIKey:) target:self];
-    [menu popUpMenuPositioningItem:nil atLocation:NSMakePoint(0.0, NSHeight([sender bounds])) inView:sender];
+    [menu popUpMenuPositioningItem:nil atLocation:NSMakePoint(NSWidth([(NSView *)sender bounds]) - 36.0, NSHeight([(NSView *)sender bounds]) - 24.0) inView:sender];
 }
 
 - (void)recordAIConversationRole:(NSString *)role text:(NSString *)text {
@@ -982,7 +910,7 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
         return;
     }
     NSUInteger pageNumber = [page pageIndex] + 1;
-    [self.aiContextTextView setString:[NSString stringWithFormat:@"Page %lu image attached for visual summary", (unsigned long)pageNumber]];
+    [self.aiHeaderModel setContextText:[NSString stringWithFormat:@"Page %lu image attached for visual summary", (unsigned long)pageNumber]];
     [self startAIRequestWithQuestion:question
                            sourceText:@"A complete rendered image of this PDF page is attached."
                          imageDataURL:pageImageDataURL
@@ -1014,7 +942,7 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     NSURL *fileURL = [(NSDocument *)[mainController document] fileURL];
     NSString *fileName = [[fileURL lastPathComponent] length] ? [fileURL lastPathComponent] : @"document.pdf";
     NSString *fileDataURL = [@"data:application/pdf;base64," stringByAppendingString:[pdfData base64EncodedStringWithOptions:0]];
-    [self.aiContextTextView setString:[NSString stringWithFormat:@"Complete PDF attached: %lu pages", (unsigned long)pageCount]];
+    [self.aiHeaderModel setContextText:[NSString stringWithFormat:@"Complete PDF attached: %lu pages", (unsigned long)pageCount]];
     PDFPage *page = [[mainController pdfView] currentPage];
     [self startAIRequestWithQuestion:question
                            sourceText:@"The complete original PDF is attached."
@@ -1116,8 +1044,20 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     [self.aiComposerModel setRequestInFlight:NO];
 }
 
-- (IBAction)pinResponseToPDF:(id)sender {
-    AnchoraTurn *turn = self.aiTurn;
+- (void)copyAnswerText:(NSString *)text {
+    // The clipboard gets plain text: an answer pasted into notes, mail or a
+    // manuscript should not arrive full of Markdown punctuation.
+    NSString *plain = [text length] ? [AnchoraMarkdown plainTextFrom:text] : nil;
+    if ([plain length] == 0) {
+        NSBeep();
+        return;
+    }
+    NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+    [pasteboard clearContents];
+    [pasteboard writeObjects:@[plain]];
+}
+
+- (void)pinTurn:(AnchoraTurn *)turn asTextNote:(BOOL)asTextNote {
     // A PDF note holds plain text, and it has to stay readable in other PDF
     // apps too, so the answer's Markdown is flattened rather than pinned raw.
     NSString *response = [[turn response] length] ? [AnchoraMarkdown plainTextFrom:[turn response]] : nil;
@@ -1125,12 +1065,24 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
         NSBeep();
         return;
     }
-    if ([[turn selection] hasCharacters])
-        [mainController pinAIResponse:response title:[turn question] forSelection:[turn selection]];
-    else if ([turn page])
-        [mainController pinAIResponse:response title:[turn question] nearRect:[turn pageRect] onPage:[turn page]];
-    else
+    NSString *title = [turn question];
+    if ([[turn selection] hasCharacters]) {
+        if (asTextNote)
+            [mainController pinAIResponse:response title:title asTextNoteForSelection:[turn selection]];
+        else
+            [mainController pinAIResponse:response title:title forSelection:[turn selection]];
+    } else if ([turn page]) {
+        if (asTextNote)
+            [mainController pinAIResponse:response title:title asTextNoteNearRect:[turn pageRect] onPage:[turn page]];
+        else
+            [mainController pinAIResponse:response title:title nearRect:[turn pageRect] onPage:[turn page]];
+    } else {
         NSBeep();
+    }
+}
+
+- (IBAction)pinResponseToPDF:(id)sender {
+    [self pinTurn:self.aiTurn asTextNote:NO];
 }
 
 - (void)showAIInterface:(BOOL)show {

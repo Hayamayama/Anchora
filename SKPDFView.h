@@ -257,6 +257,7 @@ enum {
 - (void)addAnnotationForContext:(nullable id)sender;
 - (void)addAnnotationWithType:(SKNoteType)annotationType;
 - (BOOL)addAIAnchorNoteWithString:(NSString *)string title:(nullable NSString *)title nearRect:(NSRect)rect onPage:(PDFPage *)page;
+- (BOOL)addAITextNoteWithString:(NSString *)string title:(nullable NSString *)title nearRect:(NSRect)rect onPage:(PDFPage *)page;
 - (void)removeCurrentAnnotation:(nullable id)sender;
 - (void)removeThisAnnotation:(nullable id)sender;
 

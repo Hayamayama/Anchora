@@ -452,6 +452,36 @@ Paper Map 的段落內容維持既有的 evidence 標示與 Source quote 連結�
 
 版本 `1.3.4 (9)`；測試 138 個檢查。
 
+### 1.4.0 — 每則回答的行動列，以及標題／CONTEXT 改為 SwiftUI
+
+#### 回答行動列
+
+- 每則答案下方有 `Copy`、`Pin as note`、`Pin as text`。
+- **答案自己帶著它的 turn。** `AnchoraChatMessage` 新增 `turn` 欄位，因此三個問題之後回頭 pin 較早的那則答案，它仍然錨在當初被問的那段內容上，而不是最新的選取。原本的 `Pin latest answer` 只能處理最新一則。
+- `Pin as text` 是新的路徑：`SKPDFView.addAITextNoteWithString:title:nearRect:onPage:` 建立可見於頁面上的 FreeText 註記，尺寸用 Skim 自己的 `SKFitTextNoteSize` 依文字計算，並沿用使用者設定的字型與預設寬度；旋轉的頁面會對調長寬。優先放在錨點右側，放不下才改放左側。
+- `Copy` 放上剪貼簿的是**攤平後的純文字**，與 pin 一致 —— 貼進筆記或信件時不該出現 Markdown 標點。
+- 最新一則答案的行動列常駐顯示，較舊的 hover 才出現。全部隱藏的話沒有人會發現它存在；全部常駐則會讓以閱讀為主的對話變得吵雜。
+- 保留 composer 的 `Pin latest answer`：它是既有且每天在用的路徑，新的行動列是補充而不是取代。
+
+#### 標題列與 CONTEXT 卡片改為 SwiftUI
+
+- 新增 `AnchoraHeaderModel` 與 `AnchoraHeaderView`，涵蓋標題、副標、Study／Scientific 切換、`•••` 按鈕與 CONTEXT 卡片。
+- 移除 `scrollViewWithTextView:` 與 `aiCardView` —— AI 側欄不再有手工組裝的 AppKit 卡片。
+- `•••` 選單**仍然是 NSMenu**：它會統計文件的註記數量並顯示註記顏色，那是 Skim 的世界而不是 Anchora 的。SwiftUI 按鈕只回呼，由 view controller 把選單彈在標題列的右上角。
+- 高度同樣固定而非回報 intrinsic size，理由與 composer 相同。
+
+#### 新工具：孤兒方法檢查
+
+`Tools/find-orphaned-methods.py` 列出「有定義但沒有任何呼叫端」的 Objective-C 方法。這正是 1.3.1 那個 regression 的特徵 —— 通知分派被刪掉後，兩個 capture 方法變成無人呼叫，程式照樣編譯、observer 照樣註冊，功能卻消失了。
+
+第一版有前綴誤判（`showAIMoreActionsFromHeader` 蓋到 `showAIMoreActions`），已修正邊界判斷。`handleSnapshotViewFrameChanged` 列在已知的 upstream 例外清單裡：它在 Anchora 開始之前就沒有呼叫端，屬於 Skim 的程式碼，不刪除。
+
+#### 結果
+
+`SKRightSideViewController.m` 1,251 → **1,203 行**；測試 144 個檢查。版本 `1.4.0 (10)`。
+
+Release 建置 0 錯誤。`SKPDFView.m` 有 23 個警告，全部是 Skim 既有的（廢棄 API、可用性、縮排），沒有一個落在本次新增的 2818–2854 行。
+
 ---
 
 ## 目前可用功能
@@ -523,15 +553,14 @@ codesign --verify --deep --strict --verbose=2 Distribution/PDFBuddy.app
 ## 發行位置
 
 - Release app：`Distribution/Anchora.app`
-- Release 附件：`Distribution/Anchora-1.3.4-macos-arm64.zip`（8.6 MB）
-- 版本：`1.3.4 (9)`
+- Release 附件：`Distribution/Anchora-1.4.0-macos-arm64.zip`（8.6 MB）
+- 版本：`1.4.0 (10)`
 - 最低系統：macOS 14.0
 - 大小：約 17 MB
 - Bundle ID：`com.kris.anchora`
 
 ## 後續候選項目（尚未實作）
 
-- AI 回覆的 `Copy`、`Pin as anchor`、`Pin as text note` 行動列。
 - 以「主題 → 頁碼」呈現的 PDF 學習地圖。
 - Paper Map 段落內容的 Markdown 渲染（需與既有的 evidence／quote 範圍標示整合）。
 - Markdown 表格支援。

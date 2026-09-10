@@ -240,6 +240,20 @@
         NSBeep();
 }
 
+- (void)pinAIResponse:(NSString *)response title:(NSString *)title asTextNoteForSelection:(PDFSelection *)selection {
+    PDFPage *page = [selection safeFirstPage];
+    if (page == nil) {
+        NSBeep();
+        return;
+    }
+    [self pinAIResponse:response title:title asTextNoteNearRect:[selection boundsForPage:page] onPage:page];
+}
+
+- (void)pinAIResponse:(NSString *)response title:(NSString *)title asTextNoteNearRect:(NSRect)rect onPage:(PDFPage *)page {
+    if ([pdfView addAITextNoteWithString:response title:title nearRect:rect onPage:page] == NO)
+        NSBeep();
+}
+
 - (void)addNoteFromPanel:(id)sender {
     if ([self hasOverview] == NO) {
         [self createNewNote:sender];

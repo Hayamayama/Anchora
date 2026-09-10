@@ -196,7 +196,7 @@ func testPromptsFollowSettings() {
 func testChatStreamingLifecycle() {
     let model = AnchoraChatModel()
     model.appendUserMessage("Explain this")
-    model.beginStreamingMessage(status: "Uploading PDF to Anchora…", sourceLabel: "p. 4", sourcePageIndex: NSNumber(value: 3))
+    model.beginStreamingMessage(status: "Uploading PDF to Anchora…", sourceLabel: "p. 4", sourcePageIndex: NSNumber(value: 3), turn: nil)
     expectEqual(model.messages.count, 2, "the streaming bubble exists before the first delta")
     expect(model.messages[1].isPlaceholder, "the streaming bubble starts as a placeholder")
 
@@ -216,13 +216,13 @@ func testChatStreamingLifecycle() {
 
 func testChatStopAndError() {
     let model = AnchoraChatModel()
-    model.beginStreamingMessage(status: "Waiting…", sourceLabel: nil, sourcePageIndex: nil)
+    model.beginStreamingMessage(status: "Waiting…", sourceLabel: nil, sourcePageIndex: nil, turn: nil)
     model.replaceStreamingMessage(with: "Stopped.")
     expectEqual(model.messages.count, 1, "stopping before any output reuses the placeholder bubble")
     expectEqual(model.messages[0].text, "Stopped.", "the placeholder shows why it stopped")
 
     let partial = AnchoraChatModel()
-    partial.beginStreamingMessage(status: "Waiting…", sourceLabel: nil, sourcePageIndex: nil)
+    partial.beginStreamingMessage(status: "Waiting…", sourceLabel: nil, sourcePageIndex: nil, turn: nil)
     partial.appendStreamedText("half an answer")
     partial.replaceStreamingMessage(with: "Network error: timed out")
     expectEqual(partial.messages.count, 2, "an error after partial output keeps the partial answer")
@@ -232,7 +232,7 @@ func testChatStopAndError() {
 func testChatPaperMapRemovesItsBubble() {
     let model = AnchoraChatModel()
     model.appendUserMessage("Build Paper Map")
-    model.beginStreamingMessage(status: "Waiting…", sourceLabel: nil, sourcePageIndex: nil)
+    model.beginStreamingMessage(status: "Waiting…", sourceLabel: nil, sourcePageIndex: nil, turn: nil)
     model.appendStreamedText("## Objective\nlong paper map text")
     model.removeStreamingMessage()
     expectEqual(model.messages.count, 1, "a paper map's raw text leaves the transcript")
@@ -242,7 +242,7 @@ func testChatPaperMapRemovesItsBubble() {
 /// Clear chat cancels the turn, but a delta already in flight can still arrive.
 func testChatSurvivesClearMidStream() {
     let model = AnchoraChatModel()
-    model.beginStreamingMessage(status: "Waiting…", sourceLabel: nil, sourcePageIndex: nil)
+    model.beginStreamingMessage(status: "Waiting…", sourceLabel: nil, sourcePageIndex: nil, turn: nil)
     model.clear()
     model.appendStreamedText("a delta that lost its bubble")
     model.updateStreamingStatus("a status that lost its bubble")
@@ -424,6 +424,43 @@ func testRecognitionLanguageResolution() {
                 "a machine that reports nothing falls back too")
 }
 
+/// Pin has to act on the answer it was shown under.  The reader often asks two
+/// or three more questions before deciding an earlier answer was the useful one.
+func testAnswersKeepTheirOwnTurn() {
+    let model = AnchoraChatModel()
+    let first = AnchoraTurn(question: "Explain this", conversationUserText: "Explain this",
+                            selection: nil, hasTextSelection: false, page: nil, pageRect: .zero,
+                            imageDataURL: nil, sourcePageIndexes: [NSNumber(value: 3)],
+                            isPaperMap: false, status: nil)
+    let second = AnchoraTurn(question: "And this?", conversationUserText: "And this?",
+                             selection: nil, hasTextSelection: false, page: nil, pageRect: .zero,
+                             imageDataURL: nil, sourcePageIndexes: [NSNumber(value: 8)],
+                             isPaperMap: false, status: nil)
+
+    model.beginStreamingMessage(status: "…", sourceLabel: "p. 3", sourcePageIndex: NSNumber(value: 2), turn: first)
+    model.appendStreamedText("first answer")
+    model.endStreaming()
+    model.beginStreamingMessage(status: "…", sourceLabel: "p. 8", sourcePageIndex: NSNumber(value: 7), turn: second)
+    model.appendStreamedText("second answer")
+    model.endStreaming()
+
+    expectEqual(model.messages.count, 2, "both answers are in the transcript")
+    expectEqual(model.messages[0].turn?.question, "Explain this",
+                "the first answer still carries the question it answered")
+    expectEqual(model.messages[1].turn?.question, "And this?",
+                "and the second carries its own")
+    expectEqual(model.messages[0].turn?.sourcePageIndexes.map(\.intValue), [3],
+                "an older answer keeps its own pin target after newer turns")
+}
+
+func testMessagesWithNothingToPin() {
+    let model = AnchoraChatModel()
+    model.appendUserMessage("a question")
+    model.appendAssistantMessage("a hint with no turn behind it")
+    expect(model.messages[0].turn == nil, "a user turn has nothing to pin")
+    expect(model.messages[1].turn == nil, "a message that was not an answer has nothing to pin")
+}
+
 // MARK: - Capture geometry
 
 /// Two things have to be undone before a page rectangle matches what drawing
@@ -573,6 +610,8 @@ enum AnchoraCoreTests {
         testChatSurvivesClearMidStream()
         testChatHintDeduplication()
         testChatSenderNames()
+        testAnswersKeepTheirOwnTurn()
+        testMessagesWithNothingToPin()
         testMarkdownBlockKinds()
         testMarkdownNestedList()
         testMarkdownHandlesPartialStreamedText()

@@ -55,6 +55,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)pinAIResponse:(NSString *)response nearRect:(NSRect)rect onPage:(PDFPage *)page;
 - (void)pinAIResponse:(NSString *)response title:(nullable NSString *)title forSelection:(PDFSelection *)selection;
 - (void)pinAIResponse:(NSString *)response title:(nullable NSString *)title nearRect:(NSRect)rect onPage:(PDFPage *)page;
+- (void)pinAIResponse:(NSString *)response title:(nullable NSString *)title asTextNoteForSelection:(PDFSelection *)selection;
+- (void)pinAIResponse:(NSString *)response title:(nullable NSString *)title asTextNoteNearRect:(NSRect)rect onPage:(PDFPage *)page;
 - (IBAction)editNote:(nullable id)sender;
 - (IBAction)autoSizeNote:(nullable id)sender;
 - (IBAction)toggleHideNotes:(nullable id)sender;

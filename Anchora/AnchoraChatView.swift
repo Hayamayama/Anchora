@@ -19,7 +19,9 @@ struct AnchoraChatView: View {
             ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: 9.0) {
                     ForEach(model.messages) { message in
-                        AnchoraChatBubble(message: message, openPage: model.onOpenPage)
+                        AnchoraChatBubble(message: message,
+                                          isLatest: message.id == model.messages.last?.id,
+                                          model: model)
                             .id(message.id)
                     }
                 }
@@ -38,9 +40,22 @@ struct AnchoraChatView: View {
 private struct AnchoraChatBubble: View {
 
     let message: AnchoraChatMessage
-    let openPage: ((Int) -> Void)?
+    /// The newest answer keeps its actions on screen; older ones reveal them on
+    /// hover.  A row under every answer is noise in a transcript that is mostly
+    /// read, but hidden everywhere it would never be found.
+    let isLatest: Bool
+    @ObservedObject var model: AnchoraChatModel
+
+    @State private var isHovering = false
+    @State private var didCopy = false
 
     private var isUser: Bool { message.kind == .user }
+
+    /// Actions belong to a finished answer.  A user turn has nothing to pin,
+    /// and a bubble still showing a request phase has nothing to copy.
+    private var showsActions: Bool {
+        message.kind == .assistant && message.isPlaceholder == false && message.text.isEmpty == false
+    }
 
     private var background: Color {
         isUser ? Color(nsColor: .selectedContentBackgroundColor) : Color(nsColor: .controlBackgroundColor)
@@ -82,9 +97,15 @@ private struct AnchoraChatBubble: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
+                if showsActions {
+                    actions
+                        .padding(.top, 6.0)
+                        .opacity(isLatest || isHovering ? 1.0 : 0.0)
+                }
+
                 if let label = message.sourceLabel, let pageIndex = message.sourcePageIndex {
                     Button {
-                        openPage?(pageIndex)
+                        model.onOpenPage?(pageIndex)
                     } label: {
                         Text("↗ \(label)")
                             .font(.system(size: 10.5, weight: .medium))
@@ -103,5 +124,38 @@ private struct AnchoraChatBubble: View {
 
             if isUser == false { Spacer(minLength: 0.0) }
         }
+        .onHover { isHovering = $0 }
+    }
+
+    private var actions: some View {
+        HStack(spacing: 10.0) {
+            action(didCopy ? "Copied" : "Copy", help: "Copy this answer as plain text") {
+                model.onCopy?(message.text)
+                didCopy = true
+                Task {
+                    try? await Task.sleep(nanoseconds: 1_200_000_000)
+                    didCopy = false
+                }
+            }
+            if let turn = message.turn, turn.canPin {
+                action("Pin as note", help: "Add this answer to the PDF as a compact anchored note") {
+                    model.onPinAnchor?(turn)
+                }
+                action("Pin as text", help: "Add this answer to the PDF as a text note visible on the page") {
+                    model.onPinTextNote?(turn)
+                }
+            }
+            Spacer(minLength: 0.0)
+        }
+    }
+
+    private func action(_ title: String, help: String, run: @escaping () -> Void) -> some View {
+        Button(action: run) {
+            Text(title)
+                .font(.system(size: 10.5, weight: .medium))
+                .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 }

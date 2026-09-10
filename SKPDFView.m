@@ -2815,6 +2815,43 @@ static inline CGFloat secondaryOutset(CGFloat x) {
     return YES;
 }
 
+- (BOOL)addAITextNoteWithString:(NSString *)string title:(NSString *)title nearRect:(NSRect)rect onPage:(PDFPage *)page {
+    if ([string length] == 0 || page == nil || [[self document] allowsNotes] == NO)
+        return NO;
+
+    // The anchored note keeps the PDF uncluttered; this one is for when the
+    // reader wants the answer legible on the page itself, so it is sized to
+    // its text the same way a hand-made text note is.
+    NSFont *font = [[NSUserDefaults standardUserDefaults] fontForNameKey:SKFreeTextNoteFontNameKey sizeKey:SKFreeTextNoteFontSizeKey];
+    CGFloat width = [[NSUserDefaults standardUserDefaults] floatForKey:SKDefaultNoteWidthKey];
+    NSSize size = SKFitTextNoteSize(string, font, width);
+    if (([page rotation] % 180))
+        size = NSMakeSize(size.height, size.width);
+
+    NSRect pageBounds = [page boundsForBox:[self displayBox]];
+    NSRect bounds = NSMakeRect(NSMaxX(rect) + 8.0, NSMaxY(rect) - size.height, size.width, size.height);
+    // Prefer the right of the anchor, but fall back inside the page rather
+    // than letting a long answer be constrained off the edge.
+    if (NSMaxX(bounds) > NSMaxX(pageBounds))
+        bounds.origin.x = NSMinX(rect) - size.width - 8.0;
+    bounds = SKConstrainRect(NSIntegralRect(bounds), pageBounds);
+
+    PDFAnnotation *annotation = [PDFAnnotation newSkimNoteWithBounds:bounds forType:SKNFreeTextString];
+    if (annotation == nil)
+        return NO;
+    [annotation setString:string];
+    if ([font isKindOfClass:[NSFont class]])
+        [(id)annotation setFont:font];
+    [annotation setUserName:@"Anchora AI"];
+    [annotation registerUserName];
+    [self beginNewUndoGroupIfNeededWithCommit:YES];
+    [[self document] addAnnotation:annotation toPage:page];
+    [self setCurrentAnnotation:annotation];
+    [self setNeedsDisplayForAnnotation:annotation];
+    [self setUndoActionName:NSLocalizedString(@"Pin AI Answer", @"Undo action name")];
+    return YES;
+}
+
 - (void)addAnnotationForContext:(id)sender {
     [self addAnnotationWithType:[sender tag] context:[sender representedObject]];
 }
