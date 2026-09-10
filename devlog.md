@@ -382,6 +382,21 @@ Paper Map 的段落內容維持既有的 evidence 標示與 Source quote 連結�
 - Debug／Release 建置成功、Anchora 程式碼警告 0、實跑 200 MB 無 constraint 衝突。
 - 實機確認：Study／Scientific 切換會重建快捷列與標題、三個與六個按鈕都等寬填滿窄側欄、Send 的提示去重、Clear chat 清空並停用 Pin、Web verify 可切換。串流與真實 API 路徑未在此輪重跑。
 
+### 15:40–16:10 — 補上 Ask AI 的焦點，並封裝 1.3.0
+
+- `Ask AI`（選取後浮出的動作列）重新取得把游標放進輸入框的行為。SwiftUI 的 `TextField` 沒有可以從 Objective-C 直接 `makeFirstResponder:` 的對象，因此改由 `AnchoraComposerModel` 的 `focusQuestionField` 送出請求，view 以 `@FocusState` 接收。用計數器而不是布林值，這樣連續兩次請求都會生效，即使欄位已經取得過焦點。
+- 焦點在隔離的 harness 中驗證（使用者自己的 Xcode instance 當時開著真實 PDF，用 bundle identifier 驅動有可能動到那份文件）：`focusQuestionField` 之後 first responder 為 SwiftUI 的 field editor，截圖也看得到游標。
+- 版本升為 `1.3.0 (5)`。
+- 封裝：`xattr -cr` 清除延伸屬性後 ad-hoc 重簽，`codesign --verify --deep --strict` 通過。解壓後的副本再次驗簽並實際啟動，約 198 MB、無 constraint 衝突。
+
+## 發行內容（1.3.0）
+
+- Swift 核心層：settings、keychain、prompts、paper map、Responses 串流 client、Markdown、擷取層、turn state。
+- SwiftUI 側欄：聊天紀錄、Paper Map navigator、快捷列與輸入列。
+- Markdown 回覆渲染；Pin 回 PDF 時攤平為純文字。
+- 修正三個既有 bug：Paper map 的 Limitations 段落從未被切出、Hide 之後無法叫回 Paper Map、以及新串流 client 的 data race。
+- 最低系統版本 macOS 14.0；Apple Silicon。
+
 ---
 
 ## 目前可用功能
@@ -453,8 +468,8 @@ codesign --verify --deep --strict --verbose=2 Distribution/PDFBuddy.app
 ## 發行位置
 
 - Release app：`Distribution/Anchora.app`
-- Release 附件：`Distribution/Anchora-1.2.0-macos-arm64.zip`（8.5 MB）
-- 版本：`1.2.0 (4)`
+- Release 附件：`Distribution/Anchora-1.3.0-macos-arm64.zip`（8.6 MB）
+- 版本：`1.3.0 (5)`
 - 最低系統：macOS 14.0
 - 大小：約 17 MB
 - Bundle ID：`com.kris.anchora`

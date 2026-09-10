@@ -22,6 +22,10 @@ public final class AnchoraComposerModel: NSObject, ObservableObject {
     @Published public private(set) var isRequestInFlight: Bool = false
     @Published public private(set) var canPin: Bool = false
     @Published public var webVerify: Bool = false
+    /// Bumped to ask the ask bar to take keyboard focus.  A counter rather
+    /// than a flag, so two requests in a row both land even if the field was
+    /// already focused once.
+    @Published public private(set) var focusRequest: Int = 0
 
     /// Send, or Stop when a request is in flight.
     @objc public var onSubmit: (() -> Void)?
@@ -55,5 +59,11 @@ public final class AnchoraComposerModel: NSObject, ObservableObject {
 
     @objc public func setPinEnabled(_ enabled: Bool) {
         canPin = enabled
+    }
+
+    /// Puts the caret in the ask bar — used when the reader chooses Ask AI from
+    /// the selection popover and expects to start typing.
+    @objc public func focusQuestionField() {
+        focusRequest &+= 1
     }
 }

@@ -550,6 +550,10 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     if ([mainController rightSidePaneIsOpen] == NO)
         [mainController toggleRightSidePane:nil];
     [mainController setRightSidePaneState:SKSidePaneStateAI];
+    // The pane has to be on screen before its ask bar can take focus.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self.aiComposerModel focusQuestionField];
+    });
 }
 
 - (void)applySelection:(AnchoraSelection *)selection {

@@ -16,6 +16,7 @@ import SwiftUI
 struct AnchoraComposerView: View {
 
     @ObservedObject var model: AnchoraComposerModel
+    @FocusState private var questionFieldFocused: Bool
 
     /// The host gives this view a fixed height rather than letting it report an
     /// intrinsic one.  Nothing here wraps, so its height does not depend on its
@@ -30,6 +31,9 @@ struct AnchoraComposerView: View {
             secondaryActions
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onChange(of: model.focusRequest) {
+            questionFieldFocused = true
+        }
     }
 
     private var quickActions: some View {
@@ -57,6 +61,7 @@ struct AnchoraComposerView: View {
         HStack(spacing: 8.0) {
             TextField(model.placeholder, text: $model.question)
                 .textFieldStyle(.roundedBorder)
+                .focused($questionFieldFocused)
                 .onSubmit { model.onSubmit?() }
             Button(model.isRequestInFlight ? "Stop" : "Send") {
                 model.onSubmit?()
