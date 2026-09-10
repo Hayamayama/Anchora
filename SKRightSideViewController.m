@@ -67,53 +67,29 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
 
 @interface SKRightSideViewController ()
 @property (nonatomic, nullable, strong) NSTextView *aiContextTextView;
-@property (nonatomic, nullable, strong) NSTextField *aiQuestionField;
-@property (nonatomic, nullable, strong) NSButton *askAIButton, *pinResponseButton;
+@property (nonatomic, nullable, strong) AnchoraComposerModel *aiComposerModel;
 // The transcript and the Paper Map navigator are SwiftUI.  AppKit owns only
 // their position and height in the sidebar; everything inside — wrapped text
 // height, bubble growth, scrolling, link handling — belongs to the framework.
 @property (nonatomic, nullable, strong) AnchoraChatModel *aiChatModel;
 @property (nonatomic, nullable, strong) AnchoraPaperMapModel *aiPaperMapModel;
 @property (nonatomic, nullable, strong) NSView *aiChatView;
-@property (nonatomic, nullable, strong) NSView *aiQuickActions;
-@property (nonatomic, nullable, strong) NSLayoutConstraint *aiQuickActionsHeightConstraint;
-@property (nonatomic, nullable, copy) NSArray<NSLayoutConstraint *> *aiQuickActionConstraints;
 @property (nonatomic, nullable, strong) NSTextField *aiTitleLabel, *aiSubtitleLabel, *aiContextLabel;
 @property (nonatomic, nullable, strong) NSSegmentedControl *aiReadingProfileControl;
 @property (nonatomic, nullable, strong) NSView *aiPaperMapCard;
 @property (nonatomic, nullable, strong) NSLayoutConstraint *aiPaperMapHeightConstraint;
-@property (nonatomic, nullable, strong) PDFSelection *aiSelection;
+// The reader's live selection, and the snapshot the in-flight answer was
+// asked about.  Keeping these as two values rather than sixteen parallel
+// properties is what stops the two from being confused.
+@property (nonatomic, nullable, strong) AnchoraSelection *aiSelection;
+@property (nonatomic, nullable, strong) AnchoraTurn *aiTurn;
 @property (nonatomic, nullable, strong) NSLayoutConstraint *aiTopConstraint;
 // The whole OpenAI turn -- request body, streaming, delta batching, error
 // mapping -- lives in the Swift core.  Non-nil only while a turn is live.
 @property (nonatomic, nullable, strong) AnchoraResponsesClient *aiClient;
 @property (nonatomic, nullable, strong) NSPopover *selectionActionPopover;
-@property (nonatomic, nullable, strong) NSMutableString *latestAIResponse;
-// A streaming turn must have a visible destination before the request starts.
-// Keeping this state separately also lets us explain long PDF requests instead
-// of leaving the user with an empty bubble while the model is working.
-@property (nonatomic, nullable, copy) NSString *aiRequestStatus;
-@property (nonatomic, nullable, copy) NSString *aiSelectionText;
-@property (nonatomic, nullable, copy) NSString *aiSelectionImageDataURL;
-@property (nonatomic, nullable, strong) PDFPage *aiSelectionPage;
-@property (nonatomic) NSRect aiSelectionPageRect;
-// The source of the in-flight / latest answer.  These deliberately do not
-// change while the user keeps reading and selecting other material.
-@property (nonatomic, nullable, strong) PDFSelection *aiRequestSelection;
-@property (nonatomic, nullable, strong) PDFPage *aiRequestPage;
-@property (nonatomic) NSRect aiRequestPageRect;
-@property (nonatomic, nullable, copy) NSString *aiRequestImageDataURL;
 @property (nonatomic, strong) NSMutableArray<NSDictionary<NSString *, NSString *> *> *aiConversation;
-@property (nonatomic, nullable, copy) NSString *aiRequestConversationUserText;
-@property (nonatomic, nullable, copy) NSString *aiRequestQuestion;
-// Keep the page provenance for an answer separate from the live selection.
-// The user often keeps reading while a response is streaming.
-@property (nonatomic, nullable, copy) NSArray<NSNumber *> *aiRequestSourcePageIndexes;
-@property (nonatomic) NSUInteger aiSelectionGeneration;
-@property (nonatomic) BOOL aiSelectionOCRInProgress;
-@property (nonatomic) BOOL aiReceivedOutput;
 @property (nonatomic) BOOL webVerificationEnabled;
-@property (nonatomic) BOOL aiRequestIsPaperMap;
 @end
 
 @implementation SKRightSideViewController
@@ -262,7 +238,7 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
         } else if (text == nil) {
             // A streaming turn must have a visible destination before the
             // request starts, showing its phase until output arrives.
-            [model beginStreamingMessageWithStatus:self.aiRequestStatus ?: @"Preparing request…"
+            [model beginStreamingMessageWithStatus:[self.aiTurn status] ?: @"Preparing request…"
                                        sourceLabel:[self sourceLabelForPageIndexes:sourcePageIndexes]
                                    sourcePageIndex:[sourcePageIndexes firstObject]];
         } else {
@@ -283,7 +259,7 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
 
 - (void)updateAIRequestStatus:(NSString *)status {
     void (^updateStatus)(void) = ^{
-        self.aiRequestStatus = status;
+        [self.aiTurn setStatus:status];
         [self.aiChatModel updateStreamingStatus:status ?: @""];
     };
     if ([NSThread isMainThread])
@@ -334,78 +310,18 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     [[AnchoraSettings sharedSettings] setResponseLanguage:[sender tag] == AnchoraResponseLanguageEnglish ? AnchoraResponseLanguageEnglish : AnchoraResponseLanguageTraditionalChinese];
 }
 
-- (NSButton *)quickActionButtonWithTitle:(NSString *)title tag:(NSInteger)tag {
-    // Do not use +buttonWithTitle:target:action: here.  On macOS 26 that
-    // convenience factory calls -sizeToFit while the right-side controller is
-    // still loading.  With Scientific mode selected, AppKit enters its
-    // SwiftUI/AttributeGraph sizing bridge and can allocate indefinitely
-    // before the PDF window finishes opening.  A concrete initial frame lets
-    // the enclosing stack take over sizing after the view is installed.
-    NSButton *actionButton = [[NSButton alloc] initWithFrame:NSMakeRect(0.0, 0.0, 80.0, 26.0)];
-    [actionButton setTitle:title];
-    [actionButton setTarget:self];
-    [actionButton setAction:@selector(askAIQuickAction:)];
-    [actionButton setTag:tag];
-    [actionButton setBezelStyle:NSBezelStyleAccessoryBarAction];
-    [actionButton setToolTip:title];
-    [actionButton setTranslatesAutoresizingMaskIntoConstraints:NO];
-    return actionButton;
-}
-
-- (void)rebuildAIQuickActions {
-    NSView *quickActions = self.aiQuickActions;
-    if (quickActions == nil)
-        return;
-    [NSLayoutConstraint deactivateConstraints:self.aiQuickActionConstraints];
-    self.aiQuickActionConstraints = nil;
-    for (NSView *view in [[quickActions subviews] copy])
-        [view removeFromSuperview];
-
-    NSArray<NSString *> *titles = [AnchoraPrompts quickActionTitlesWithProfile:[[AnchoraSettings sharedSettings] readingProfile]];
-    NSMutableArray<NSButton *> *buttons = [NSMutableArray arrayWithCapacity:[titles count]];
-    for (NSUInteger index = 0; index < [titles count]; index++) {
-        NSButton *actionButton = [self quickActionButtonWithTitle:titles[index] tag:index];
-        if ([self isScientificReadingProfile] && index == 5)
-            [actionButton setToolTip:@"Build an evidence chain: direct result, author interpretation, inference, and what remains unproven."];
-        [quickActions addSubview:actionButton];
-        [buttons addObject:actionButton];
-    }
-
-    // NSStackView's addArrangedSubview: is the allocation loop seen in the
-    // live process sample. Direct constraints retain responsive equal-width
-    // controls without entering that AppKit implementation during startup.
-    NSMutableArray<NSLayoutConstraint *> *constraints = [NSMutableArray array];
-    for (NSUInteger index = 0; index < [buttons count]; index++) {
-        NSButton *actionButton = buttons[index];
-        [constraints addObjectsFromArray:@[
-            [actionButton.topAnchor constraintEqualToAnchor:quickActions.topAnchor],
-            [actionButton.bottomAnchor constraintEqualToAnchor:quickActions.bottomAnchor]
-        ]];
-        if (index == 0) {
-            [constraints addObject:[actionButton.leadingAnchor constraintEqualToAnchor:quickActions.leadingAnchor]];
-        } else {
-            NSButton *previous = buttons[index - 1];
-            [constraints addObject:[actionButton.leadingAnchor constraintEqualToAnchor:previous.trailingAnchor constant:4.0]];
-            [constraints addObject:[actionButton.widthAnchor constraintEqualToAnchor:buttons.firstObject.widthAnchor]];
-        }
-        if (index == [buttons count] - 1)
-            [constraints addObject:[actionButton.trailingAnchor constraintEqualToAnchor:quickActions.trailingAnchor]];
-    }
-    [NSLayoutConstraint activateConstraints:constraints];
-    self.aiQuickActionConstraints = constraints;
-    [self.aiQuickActionsHeightConstraint setConstant:26.0];
-}
-
 - (void)updateAIReadingProfileInterface {
-    BOOL scientific = [self isScientificReadingProfile];
+    AnchoraReadingProfile profile = [[AnchoraSettings sharedSettings] readingProfile];
+    BOOL scientific = profile == AnchoraReadingProfileScientific;
     [self.aiReadingProfileControl setSelectedSegment:scientific ? 1 : 0];
     [self.aiTitleLabel setStringValue:scientific ? @"Anchora Scientific" : @"Anchora AI"];
     [self.aiSubtitleLabel setStringValue:scientific ? @"Trace the evidence behind a paper" : @"Ask about what you are reading"];
     [self.aiContextLabel setStringValue:scientific ? @"PAPER CONTEXT" : @"CONTEXT"];
-    [self.aiQuestionField setPlaceholderString:scientific ? @"Ask about this paper…" : @"Ask about this selection…"];
-    [self rebuildAIQuickActions];
-    if ([self.aiSelectionText length] == 0 && [self.aiSelectionImageDataURL length] == 0 && self.aiSelectionOCRInProgress == NO)
-        [self.aiContextTextView setString:scientific ? @"Select paper text, or capture a figure with Command-Option-drag." : @"Select text in the PDF to give AI context."];
+    [self.aiComposerModel setPlaceholderText:[AnchoraPrompts composerPlaceholderWithProfile:profile]];
+    [self.aiComposerModel setQuickActionTitles:[AnchoraPrompts quickActionTitlesWithProfile:profile]
+                                      tooltips:[AnchoraPrompts quickActionTooltipsWithProfile:profile]];
+    if ([self.aiSelection hasContext] == NO && [self.aiSelection isRecognizingText] == NO)
+        [self.aiContextTextView setString:[AnchoraPrompts emptyContextMessageWithProfile:profile]];
 }
 
 - (IBAction)changeAIReadingProfile:(id)sender {
@@ -502,63 +418,16 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     [paperMapCard setHidden:YES];
     [rootView addSubview:paperMapCard];
 
-    NSView *quickActions = [[NSView alloc] initWithFrame:NSZeroRect];
-    [quickActions setTranslatesAutoresizingMaskIntoConstraints:NO];
-
     AnchoraChatModel *chatModel = [[AnchoraChatModel alloc] init];
     NSView *chatView = [AnchoraHosting chatViewWithModel:chatModel];
     [rootView addSubview:chatView];
 
-    // Keep the action bar above the transparent chat scroll view in the view
-    // hierarchy.  Constraints keep the views separated visually, but z-order
-    // also determines which view receives mouse clicks during a live reflow.
-    [rootView addSubview:quickActions positioned:NSWindowAbove relativeTo:chatView];
-
-    NSVisualEffectView *composer = [self aiCardView];
-    [rootView addSubview:composer];
-    NSTextField *questionField = [[NSTextField alloc] initWithFrame:NSZeroRect];
-    [questionField setPlaceholderString:@"Ask about this selection…"];
-    [questionField setTextColor:[NSColor textColor]];
-    [questionField setBackgroundColor:[NSColor clearColor]];
-    [questionField setTarget:self];
-    [questionField setAction:@selector(askAI:)];
-    [questionField setTranslatesAutoresizingMaskIntoConstraints:NO];
-    [composer addSubview:questionField];
-    NSButton *askButton = [NSButton buttonWithTitle:@"Send" target:self action:@selector(askAI:)];
-    [askButton setBezelStyle:NSBezelStyleRounded];
-    [askButton setTranslatesAutoresizingMaskIntoConstraints:NO];
-    [composer addSubview:askButton];
-    NSButton *pinButton = [NSButton buttonWithTitle:@"Pin latest answer" target:self action:@selector(pinResponseToPDF:)];
-    [pinButton setBezelStyle:NSBezelStyleAccessoryBarAction];
-    [pinButton setEnabled:NO];
-    [pinButton setTranslatesAutoresizingMaskIntoConstraints:NO];
-    [composer addSubview:pinButton];
-    NSButton *clearButton = [NSButton buttonWithTitle:@"Clear chat" target:self action:@selector(clearAIConversation:)];
-    [clearButton setBezelStyle:NSBezelStyleAccessoryBarAction];
-    [clearButton setToolTip:@"Clear this conversation and its local memory"];
-    [clearButton setTranslatesAutoresizingMaskIntoConstraints:NO];
-    [composer addSubview:clearButton];
-    NSButton *webButton = [NSButton buttonWithTitle:@"Web verify" target:self action:@selector(toggleWebVerification:)];
-    [webButton setButtonType:NSButtonTypePushOnPushOff];
-    [webButton setBezelStyle:NSBezelStyleAccessoryBarAction];
-    [webButton setToolTip:@"Off: answer from the PDF and general knowledge. On: search the web, verify claims, and show sources."];
-    [webButton setTranslatesAutoresizingMaskIntoConstraints:NO];
-    [composer addSubview:webButton];
-    [NSLayoutConstraint activateConstraints:@[
-        [questionField.leadingAnchor constraintEqualToAnchor:composer.leadingAnchor constant:10.0],
-        [questionField.topAnchor constraintEqualToAnchor:composer.topAnchor constant:9.0],
-        [questionField.trailingAnchor constraintEqualToAnchor:askButton.leadingAnchor constant:-8.0],
-        [askButton.trailingAnchor constraintEqualToAnchor:composer.trailingAnchor constant:-10.0],
-        [askButton.centerYAnchor constraintEqualToAnchor:questionField.centerYAnchor],
-        [pinButton.leadingAnchor constraintEqualToAnchor:composer.leadingAnchor constant:8.0],
-        [pinButton.topAnchor constraintEqualToAnchor:questionField.bottomAnchor constant:4.0],
-        [clearButton.leadingAnchor constraintEqualToAnchor:pinButton.trailingAnchor constant:6.0],
-        [clearButton.centerYAnchor constraintEqualToAnchor:pinButton.centerYAnchor],
-        [webButton.trailingAnchor constraintEqualToAnchor:composer.trailingAnchor constant:-8.0],
-        [webButton.centerYAnchor constraintEqualToAnchor:pinButton.centerYAnchor],
-        [clearButton.trailingAnchor constraintLessThanOrEqualToAnchor:webButton.leadingAnchor constant:-6.0],
-        [pinButton.bottomAnchor constraintEqualToAnchor:composer.bottomAnchor constant:-6.0]
-    ]];
+    // Quick actions and the ask bar are one SwiftUI view.  Building the quick
+    // action row from NSStackView arranged subviews is what used to make
+    // AppKit measure it recursively while a PDF was opening.
+    AnchoraComposerModel *composerModel = [[AnchoraComposerModel alloc] init];
+    NSView *composer = [AnchoraHosting composerViewWithModel:composerModel];
+    [rootView addSubview:composer positioned:NSWindowAbove relativeTo:chatView];
 
     [NSLayoutConstraint activateConstraints:@[
         [contextCard.leadingAnchor constraintEqualToAnchor:rootView.leadingAnchor constant:12.0],
@@ -571,14 +440,15 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
         [chatView.leadingAnchor constraintEqualToAnchor:rootView.leadingAnchor constant:8.0],
         [chatView.trailingAnchor constraintEqualToAnchor:rootView.trailingAnchor constant:-8.0],
         [chatView.topAnchor constraintEqualToAnchor:paperMapCard.bottomAnchor constant:8.0],
-        [chatView.bottomAnchor constraintEqualToAnchor:quickActions.topAnchor constant:-8.0],
+        [chatView.bottomAnchor constraintEqualToAnchor:composer.topAnchor constant:-8.0],
         [chatView.heightAnchor constraintGreaterThanOrEqualToConstant:120.0],
-        [quickActions.leadingAnchor constraintEqualToAnchor:rootView.leadingAnchor constant:12.0],
-        [quickActions.trailingAnchor constraintEqualToAnchor:rootView.trailingAnchor constant:-12.0],
-        [quickActions.bottomAnchor constraintEqualToAnchor:composer.topAnchor constant:-8.0],
         [composer.leadingAnchor constraintEqualToAnchor:rootView.leadingAnchor constant:12.0],
         [composer.trailingAnchor constraintEqualToAnchor:rootView.trailingAnchor constant:-12.0],
-        [composer.bottomAnchor constraintEqualToAnchor:rootView.bottomAnchor constant:-12.0]
+        [composer.bottomAnchor constraintEqualToAnchor:rootView.bottomAnchor constant:-12.0],
+        // A fixed height rather than an intrinsic one: nothing in the composer
+        // wraps, so its height must not be allowed to depend on the sidebar's
+        // width.
+        [composer.heightAnchor constraintEqualToConstant:[AnchoraHosting composerHeight]]
     ]];
 
     self.aiView = rootView;
@@ -588,9 +458,9 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     self.aiPaperMapHeightConstraint = [paperMapCard.heightAnchor constraintEqualToConstant:0.0];
     self.aiPaperMapHeightConstraint.priority = NSLayoutPriorityRequired;
     self.aiPaperMapHeightConstraint.active = YES;
-    self.aiQuestionField = questionField;
     self.aiChatView = chatView;
     self.aiChatModel = chatModel;
+    self.aiComposerModel = composerModel;
 
     __weak SKRightSideViewController *weakSelf = self;
     [chatModel setOnOpenPage:^(NSInteger pageIndex) {
@@ -609,11 +479,21 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     [paperMapModel setOnLayoutChange:^{
         [weakSelf updatePaperMapCardHeight];
     }];
-    self.aiQuickActions = quickActions;
-    self.aiQuickActionsHeightConstraint = [quickActions.heightAnchor constraintEqualToConstant:26.0];
-    self.aiQuickActionsHeightConstraint.active = YES;
-    self.askAIButton = askButton;
-    self.pinResponseButton = pinButton;
+    [composerModel setOnSubmit:^{
+        [weakSelf askAI:nil];
+    }];
+    [composerModel setOnQuickAction:^(NSInteger index) {
+        [weakSelf performQuickActionAtIndex:index];
+    }];
+    [composerModel setOnPin:^{
+        [weakSelf pinResponseToPDF:nil];
+    }];
+    [composerModel setOnClear:^{
+        [weakSelf clearAIConversation:nil];
+    }];
+    [composerModel setOnWebVerifyChanged:^(BOOL enabled) {
+        [weakSelf setWebVerificationEnabledFromComposer:enabled];
+    }];
     [self updateAIReadingProfileInterface];
     [self queueWelcomeMessage];
 }
@@ -670,56 +550,40 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     if ([mainController rightSidePaneIsOpen] == NO)
         [mainController toggleRightSidePane:nil];
     [mainController setRightSidePaneState:SKSidePaneStateAI];
-    [[mainController window] makeFirstResponder:self.aiQuestionField];
+}
+
+- (void)applySelection:(AnchoraSelection *)selection {
+    self.aiSelection = selection;
+    [self.aiContextTextView setString:[selection contextDescription]];
 }
 
 - (void)updateSelectionContext:(NSNotification *)notification {
     SKPDFView *pdfView = [mainController pdfView];
-    if ([[notification name] isEqualToString:SKPDFViewAISelectionAreaChangedNotification]) {
-        [self captureAISelectionArea];
-        return;
-    }
-    if ([[notification name] isEqualToString:SKPDFViewAIImageSelectionAreaChangedNotification]) {
-        [self captureAIImageSelectionArea];
-        return;
-    }
-    // Rectangle drags send the normal selection notification while tracking.
-    // Wait for their dedicated final notification instead of clearing the
-    // previous context once for every mouse-move event.
-    if (NSIsEmptyRect([pdfView currentSelectionRect]) == NO && [[pdfView currentSelection] hasCharacters] == NO)
+    if (pdfView == nil || self.aiContextTextView == nil)
         return;
     PDFSelection *selection = [pdfView currentSelection];
-    NSTextView *contextTextView = self.aiContextTextView;
-    if ([selection hasCharacters]) {
-        self.aiSelection = [selection copy];
-        self.aiSelectionImageDataURL = nil;
-        self.aiSelectionPage = nil;
-        self.aiSelectionPageRect = NSZeroRect;
-        self.aiSelectionGeneration += 1;
-        NSString *rawText = [selection string] ?: @"";
-        NSString *cleanText = [selection cleanedString] ?: @"";
-        if ([self selectionNeedsOCR:rawText cleanedText:cleanText]) {
-            self.aiSelectionText = nil;
-            self.aiSelectionOCRInProgress = YES;
-            [contextTextView setString:@"Reading selected text with OCR…"];
-            [self recognizeTextForCurrentSelection:selection generation:self.aiSelectionGeneration];
-        } else {
-            self.aiSelectionOCRInProgress = NO;
-            self.aiSelectionText = cleanText;
-            [contextTextView setString:cleanText];
-        }
-        [self showSelectionActionsForSelection:selection];
-    } else {
-        self.aiSelection = nil;
-        self.aiSelectionImageDataURL = nil;
-        self.aiSelectionPage = nil;
-        self.aiSelectionPageRect = NSZeroRect;
-        self.aiSelectionText = nil;
-        self.aiSelectionOCRInProgress = NO;
-        self.aiSelectionGeneration += 1;
-        [contextTextView setString:@"Select text in the PDF to give AI context."];
+    if ([selection hasCharacters] == NO) {
+        [self applySelection:[AnchoraSelection emptyWithMessage:[AnchoraPrompts emptyContextMessageWithProfile:[[AnchoraSettings sharedSettings] readingProfile]]
+                                                          after:self.aiSelection]];
         [self.selectionActionPopover close];
+        return;
     }
+
+    NSString *rawText = [selection string] ?: @"";
+    NSString *cleanText = [selection cleanedString] ?: @"";
+    if ([AnchoraTextQuality needsRecognitionWithRawText:rawText cleanedText:cleanText textWithoutAliens:[rawText stringByRemovingAliens]]) {
+        PDFPage *page = [[selection pages] firstObject];
+        [self applySelection:[AnchoraSelection recognizingWithSelection:selection
+                                                      hasTextSelection:YES
+                                                                  page:page
+                                                              pageRect:page ? [selection boundsForPage:page] : NSZeroRect
+                                                               message:[AnchoraPrompts recognizingSelectionMessage]
+                                                                 after:self.aiSelection]];
+        [self recognizeTextForCurrentSelection];
+    } else {
+        [self applySelection:[AnchoraSelection text:cleanText selection:selection after:self.aiSelection]];
+    }
+    [self showSelectionActionsForSelection:selection];
 }
 
 - (void)captureAISelectionArea {
@@ -728,16 +592,14 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     NSRect pageRect = [pdfView currentSelectionRect];
     if (page == nil || NSIsEmptyRect(pageRect))
         return;
-    self.aiSelection = nil;
-    self.aiSelectionImageDataURL = nil;
-    self.aiSelectionPage = page;
-    self.aiSelectionPageRect = pageRect;
-    self.aiSelectionText = nil;
-    self.aiSelectionGeneration += 1;
-    self.aiSelectionOCRInProgress = YES;
-    [self.aiContextTextView setString:@"Reading selected area with OCR…"];
+    [self applySelection:[AnchoraSelection recognizingWithSelection:nil
+                                                  hasTextSelection:NO
+                                                              page:page
+                                                          pageRect:pageRect
+                                                           message:[AnchoraPrompts recognizingRegionMessage]
+                                                             after:self.aiSelection]];
     [self.selectionActionPopover close];
-    [self recognizeTextInPageRect:pageRect page:page generation:self.aiSelectionGeneration];
+    [self recognizeTextForCurrentSelection];
 }
 
 - (void)captureAIImageSelectionArea {
@@ -747,116 +609,40 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     if (page == nil || NSIsEmptyRect(pageRect))
         return;
 
-    PDFDisplayBox box = [pdfView displayBox];
-    NSRect pageBounds = [page boundsForBox:box];
-    pageRect = NSIntersectionRect(NSInsetRect(pageRect, -3.0, -3.0), pageBounds);
-    CGFloat renderScale = 2.0;
-    NSInteger pixelsWide = (NSInteger)ceil(NSWidth(pageRect) * renderScale);
-    NSInteger pixelsHigh = (NSInteger)ceil(NSHeight(pageRect) * renderScale);
-    NSBitmapImageRep *imageRep = (pixelsWide > 0 && pixelsHigh > 0) ? [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL
-        pixelsWide:pixelsWide pixelsHigh:pixelsHigh bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO
-        colorSpaceName:NSCalibratedRGBColorSpace bitmapFormat:0 bytesPerRow:0 bitsPerPixel:32] : nil;
-    if (imageRep) {
-        CGContextRef context = [[NSGraphicsContext graphicsContextWithBitmapImageRep:imageRep] CGContext];
-        CGContextSetRGBFillColor(context, 1.0, 1.0, 1.0, 1.0);
-        CGContextFillRect(context, CGRectMake(0.0, 0.0, pixelsWide, pixelsHigh));
-        CGContextScaleCTM(context, renderScale, renderScale);
-        CGContextTranslateCTM(context, -NSMinX(pageRect), -NSMinY(pageRect));
-        [page drawWithBox:box toContext:context];
-    }
-    NSData *jpegData = [imageRep representationUsingType:NSBitmapImageFileTypeJPEG properties:@{NSImageCompressionFactor: @0.82}];
-    if ([jpegData length] == 0) {
-        [self.aiContextTextView setString:@"Could not capture this PDF area as an image. Try a smaller region."];
+    NSString *dataURL = [AnchoraCapture regionImageDataURLWithPage:page box:[pdfView displayBox] rect:pageRect];
+    if ([dataURL length] == 0) {
+        [self.aiContextTextView setString:[AnchoraPrompts imageCaptureFailureMessage]];
         return;
     }
-
-    self.aiSelection = nil;
-    self.aiSelectionPage = page;
-    self.aiSelectionPageRect = pageRect;
-    self.aiSelectionImageDataURL = [@"data:image/jpeg;base64," stringByAppendingString:[jpegData base64EncodedStringWithOptions:0]];
-    self.aiSelectionText = @"A visual region of the PDF is attached.";
-    self.aiSelectionOCRInProgress = NO;
-    self.aiSelectionGeneration += 1;
-    [self.aiContextTextView setString:@"Image ready — ask AI about this diagram, chart, or slide region."];
+    [self applySelection:[AnchoraSelection imageWithDataURL:dataURL
+                                                      page:page
+                                                  pageRect:pageRect
+                                                      text:[AnchoraPrompts regionImageContextText]
+                                                   message:[AnchoraPrompts imageReadyMessage]
+                                                     after:self.aiSelection]];
     [self.selectionActionPopover close];
 }
 
-- (BOOL)selectionNeedsOCR:(NSString *)rawText cleanedText:(NSString *)cleanText {
-    if ([rawText length] == 0)
-        return YES;
-    NSUInteger removedCharacterCount = [rawText length] - [rawText.stringByRemovingAliens length];
-    return removedCharacterCount > 0 && (removedCharacterCount * 3 >= [rawText length] || [cleanText length] == 0);
-}
-
-- (void)recognizeTextForCurrentSelection:(PDFSelection *)selection generation:(NSUInteger)generation {
-    PDFPage *page = [[selection pages] firstObject];
-    NSRect pageRect = page ? [selection boundsForPage:page] : NSZeroRect;
-    [self recognizeTextInPageRect:pageRect page:page generation:generation];
-}
-
-- (void)recognizeTextInPageRect:(NSRect)pageRect page:(PDFPage *)page generation:(NSUInteger)generation {
-    SKPDFView *pdfView = [mainController pdfView];
-    PDFDisplayBox box = [pdfView displayBox];
-    NSRect pageBounds = page ? [page boundsForBox:box] : NSZeroRect;
-    // Render PDF content directly, rather than taking a screenshot of the
-    // view. The latter includes Skim's dimmed selection overlay and made OCR
-    // unreliable for exactly the large slide regions this feature is for.
-    pageRect = NSIntersectionRect(NSInsetRect(pageRect, -3.0, -3.0), pageBounds);
-    CGFloat renderScale = 2.0;
-    NSInteger pixelsWide = (NSInteger)ceil(NSWidth(pageRect) * renderScale);
-    NSInteger pixelsHigh = (NSInteger)ceil(NSHeight(pageRect) * renderScale);
-    NSBitmapImageRep *imageRep = (page && pixelsWide > 0 && pixelsHigh > 0) ? [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL
-        pixelsWide:pixelsWide pixelsHigh:pixelsHigh bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO
-        colorSpaceName:NSCalibratedRGBColorSpace bitmapFormat:0 bytesPerRow:0 bitsPerPixel:32] : nil;
-    if (imageRep) {
-        NSGraphicsContext *graphicsContext = [NSGraphicsContext graphicsContextWithBitmapImageRep:imageRep];
-        CGContextRef context = [graphicsContext CGContext];
-        CGContextSetRGBFillColor(context, 1.0, 1.0, 1.0, 1.0);
-        CGContextFillRect(context, CGRectMake(0.0, 0.0, pixelsWide, pixelsHigh));
-        CGContextScaleCTM(context, renderScale, renderScale);
-        CGContextTranslateCTM(context, -NSMinX(pageRect), -NSMinY(pageRect));
-        [page drawWithBox:box toContext:context];
-    }
-    CGImageRef image = [imageRep CGImage];
-    if (image == NULL) {
-        [self finishOCRWithText:nil generation:generation];
+- (void)recognizeTextForCurrentSelection {
+    AnchoraSelection *pending = self.aiSelection;
+    PDFPage *page = [pending page];
+    if (page == nil) {
+        [self applySelection:[pending byFinishingRecognitionWithText:nil failureMessage:[AnchoraPrompts recognitionFailureMessage]]];
         return;
     }
-    CGImageRetain(image);
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        VNRecognizeTextRequest *request = [[VNRecognizeTextRequest alloc] init];
-        [request setRecognitionLevel:VNRequestTextRecognitionLevelAccurate];
-        [request setUsesLanguageCorrection:YES];
-        VNImageRequestHandler *handler = [[VNImageRequestHandler alloc] initWithCGImage:image options:@{}];
-        NSError *error = nil;
-        BOOL success = [handler performRequests:@[request] error:&error];
-        NSMutableArray<NSString *> *lines = [NSMutableArray array];
-        if (success) {
-            for (VNRecognizedTextObservation *observation in [request results]) {
-                VNRecognizedText *candidate = [[observation topCandidates:1] firstObject];
-                if ([[candidate string] length])
-                    [lines addObject:[candidate string]];
-            }
-        }
-        CGImageRelease(image);
-        [self finishOCRWithText:[lines componentsJoinedByString:@" "] generation:generation];
-    });
-}
-
-- (void)finishOCRWithText:(NSString *)text generation:(NSUInteger)generation {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (generation != self.aiSelectionGeneration)
+    __weak SKRightSideViewController *weakSelf = self;
+    [AnchoraCapture recognizeTextWithPage:page
+                                      box:[[mainController pdfView] displayBox]
+                                     rect:[pending pageRect]
+                               completion:^(NSString *text) {
+        SKRightSideViewController *strongSelf = weakSelf;
+        // The reader may have moved on while Vision was working; a stale
+        // result must never replace a newer selection.
+        if (strongSelf == nil || [strongSelf.aiSelection generation] != [pending generation])
             return;
-        self.aiSelectionOCRInProgress = NO;
-        NSString *cleanText = [text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        if ([cleanText length]) {
-            self.aiSelectionText = cleanText;
-            [self.aiContextTextView setString:cleanText];
-        } else {
-            self.aiSelectionText = nil;
-            [self.aiContextTextView setString:@"This PDF’s text layer could not be read. OCR could not recover this selection; try selecting a larger area."];
-        }
-    });
+        [strongSelf applySelection:[strongSelf.aiSelection byFinishingRecognitionWithText:text
+                                                                          failureMessage:[AnchoraPrompts recognitionFailureMessage]]];
+    }];
 }
 
 - (IBAction)askAI:(id)sender {
@@ -864,44 +650,43 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
         [self cancelCurrentAIRequest];
         return;
     }
-    PDFSelection *selection = self.aiSelection;
-    if ([selection hasCharacters] == NO && [self.aiSelectionText length] == 0 && [self.aiSelectionImageDataURL length] == 0 && self.aiSelectionOCRInProgress == NO) {
+    if ([self.aiSelection hasContext] == NO && [self.aiSelection isRecognizingText] == NO)
         [self updateSelectionContext:nil];
-        selection = self.aiSelection;
-    }
-    if ([selection hasCharacters] == NO && [self.aiSelectionText length] == 0 && [self.aiSelectionImageDataURL length] == 0 && [self.aiConversation count] == 0) {
+    AnchoraSelection *selection = self.aiSelection;
+
+    if ([selection hasContext] == NO && [self.aiConversation count] == 0) {
         NSBeep();
-        NSString *hint = @"Select text, Option-drag for OCR, or Command-Option-drag to send an image region. After the first question, you can ask a follow-up without selecting again.";
-        if ([self.aiChatModel containsText:hint] == NO)
-            [self appendChatMessageFrom:SKAIAssistantName text:hint];
-        [self.pinResponseButton setEnabled:NO];
+        // Repeating the same hint on every empty Send turns the transcript
+        // into noise.
+        if ([self.aiChatModel containsText:[AnchoraPrompts selectionHint]] == NO)
+            [self appendChatMessageFrom:SKAIAssistantName text:[AnchoraPrompts selectionHint]];
+        [self.aiComposerModel setPinEnabled:NO];
         return;
     }
-    if (self.aiSelectionOCRInProgress) {
+    if ([selection isRecognizingText]) {
         NSBeep();
-        [self appendChatMessageFrom:SKAIAssistantName text:@"I’m still reading this selection with OCR. Try again in a moment."];
+        [self appendChatMessageFrom:SKAIAssistantName text:[AnchoraPrompts recognitionInProgressHint]];
         return;
     }
-    NSString *selectionText = self.aiSelectionText;
-    NSString *question = [[self.aiQuestionField stringValue] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+
+    NSString *question = [[self.aiComposerModel questionText] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     if ([question length] == 0)
         question = @"Explain this";
     [self startAIRequestWithQuestion:question
-                           sourceText:selectionText
-                         imageDataURL:self.aiSelectionImageDataURL
-                          fileDataURL:nil
-                             fileName:nil
-                            selection:[selection hasCharacters] ? selection : nil
-                                 page:[selection hasCharacters] ? nil : self.aiSelectionPage
-                             pageRect:[selection hasCharacters] ? NSZeroRect : self.aiSelectionPageRect
-                       displayQuestion:question];
+                          sourceText:[selection text]
+                        imageDataURL:[selection imageDataURL]
+                         fileDataURL:nil
+                            fileName:nil
+                           selection:[selection selection]
+                                page:[selection page]
+                            pageRect:[selection pageRect]
+                     displayQuestion:question];
 }
 
-- (IBAction)askAIQuickAction:(id)sender {
-    NSInteger tag = [sender tag];
+- (void)performQuickActionAtIndex:(NSInteger)tag {
     if ([self isScientificReadingProfile] == NO) {
-        [self.aiQuestionField setStringValue:[AnchoraPrompts studyQuickActionPromptWithTag:tag]];
-        [self askAI:sender];
+        [self.aiComposerModel setQuestionText:[AnchoraPrompts studyQuickActionPromptWithTag:tag]];
+        [self askAI:nil];
         return;
     }
 
@@ -910,11 +695,9 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
         return;
     }
     NSString *question = [AnchoraPrompts scientificQuickActionPromptWithTag:tag];
-    PDFSelection *selection = self.aiSelection;
-    if ([selection hasCharacters] == NO && [self.aiSelectionText length] == 0 && [self.aiSelectionImageDataURL length] == 0)
+    if ([self.aiSelection hasContext] == NO)
         [self updateSelectionContext:nil];
-    selection = self.aiSelection;
-    BOOL hasDirectContext = [selection hasCharacters] || [self.aiSelectionText length] || [self.aiSelectionImageDataURL length];
+    BOOL hasDirectContext = [self.aiSelection hasContext];
     NSString *displayQuestion = [AnchoraPrompts scientificQuickActionDisplayTitleWithTag:tag];
     // Paper is always a whole-document action. The other actions use a live
     // selection when present; otherwise they remain useful by using the
@@ -922,8 +705,8 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     if (tag == 0) {
         [self startWholeDocumentRequestWithQuestion:question displayQuestion:displayQuestion];
     } else if (hasDirectContext) {
-        [self.aiQuestionField setStringValue:question];
-        [self askAI:sender];
+        [self.aiComposerModel setQuestionText:question];
+        [self askAI:nil];
     } else if (tag == 4) {
         [self analyzeCurrentPageWithQuestion:question displayQuestion:@"Analyze current page figure"];
     } else {
@@ -931,10 +714,8 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     }
 }
 
-- (IBAction)toggleWebVerification:(id)sender {
-    self.webVerificationEnabled = [(NSButton *)sender state] == NSControlStateValueOn;
-    [(NSButton *)sender setTitle:self.webVerificationEnabled ? @"Web verify ✓" : @"Web verify"];
-    [(NSButton *)sender setToolTip:self.webVerificationEnabled ? @"Web verification is on. Anchora will search for current evidence and list the sources it used." : @"Off: answer from the PDF and general knowledge. On: search the web, verify claims, and show sources."];
+- (void)setWebVerificationEnabledFromComposer:(BOOL)enabled {
+    self.webVerificationEnabled = enabled;
 }
 
 - (void)showNotesDashboardWithPredicate:(NSPredicate *)predicate label:(NSString *)label {
@@ -1115,7 +896,7 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     // Follow-up questions intentionally work without a new selection. Keep a
     // traceable source in that case rather than making the answer look uncited.
     if ([sourcePageIndexes count] == 0)
-        sourcePageIndexes = self.aiRequestSourcePageIndexes ?: @[];
+        sourcePageIndexes = [self.aiTurn sourcePageIndexes] ?: @[];
     NSString *sourceDescription = [self requestSourceDescriptionForPageIndexes:sourcePageIndexes];
 
     AnchoraRequest *request = [[AnchoraRequest alloc] init];
@@ -1135,32 +916,32 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     [request setTimeout:[fileDataURL length] ? 300.0 : 120.0];
 
     [self.aiClient cancel];
-    self.aiRequestSelection = [selection hasCharacters] ? [selection copy] : nil;
-    self.aiRequestPage = self.aiRequestSelection ? nil : page;
-    self.aiRequestPageRect = self.aiRequestSelection ? NSZeroRect : pageRect;
-    self.aiRequestImageDataURL = imageDataURL;
-    self.aiRequestQuestion = displayQuestion;
     // A Paper Map is the sole full-document response rendered into the
     // navigator. All other requests remain normal chat replies.
-    self.aiRequestIsPaperMap = [self isScientificReadingProfile] && [fileDataURL length] > 0 &&
+    BOOL isPaperMap = [self isScientificReadingProfile] && [fileDataURL length] > 0 &&
         ([displayQuestion rangeOfString:@"Paper Map" options:NSCaseInsensitiveSearch].location != NSNotFound ||
          [question rangeOfString:@"Paper map" options:NSCaseInsensitiveSearch].location != NSNotFound);
-    self.aiRequestSourcePageIndexes = sourcePageIndexes;
-    self.aiRequestConversationUserText = [sourceText length] ? [NSString stringWithFormat:@"%@\n\nPDF context used:\n%@", displayQuestion, [sourceText substringToIndex:MIN((NSUInteger)6000, [sourceText length])]] : displayQuestion;
-    [self recordAIConversationRole:@"user" text:self.aiRequestConversationUserText];
-    self.aiReceivedOutput = NO;
-    self.latestAIResponse = [NSMutableString string];
-    self.aiRequestStatus = [fileDataURL length] ? @"Preparing the complete PDF…" : ([imageDataURL length] ? @"Preparing the image…" : @"Sending your question…");
+    NSString *conversationUserText = [sourceText length] ? [NSString stringWithFormat:@"%@\n\nPDF context used:\n%@", displayQuestion, [sourceText substringToIndex:MIN((NSUInteger)6000, [sourceText length])]] : displayQuestion;
+    self.aiTurn = [[AnchoraTurn alloc] initWithQuestion:displayQuestion
+                                   conversationUserText:conversationUserText
+                                              selection:selection
+                                       hasTextSelection:[selection hasCharacters]
+                                                   page:page
+                                               pageRect:pageRect
+                                           imageDataURL:imageDataURL
+                                      sourcePageIndexes:sourcePageIndexes
+                                             isPaperMap:isPaperMap
+                                                 status:[AnchoraPrompts preparingStatusWithHasFile:[fileDataURL length] > 0 hasImage:[imageDataURL length] > 0]];
+    [self recordAIConversationRole:@"user" text:conversationUserText];
     [self appendChatMessageFrom:@"You" text:displayQuestion];
     [self appendChatMessageFrom:SKAIAssistantName text:nil sourcePageIndexes:sourcePageIndexes];
-    [self.aiQuestionField setStringValue:@""];
-    [self.pinResponseButton setEnabled:NO];
+    [self.aiComposerModel setQuestionText:@""];
+    [self.aiComposerModel setPinEnabled:NO];
     // The same control becomes Stop while a request is live.  A full-PDF
     // request can legitimately take longer than a selection, so this makes
     // the wait explicit and always escapable.
-    [self.askAIButton setEnabled:YES];
-    [self.askAIButton setTitle:@"Stop"];
-    [self updateAIRequestStatus:[fileDataURL length] ? @"Uploading PDF to Anchora…" : ([imageDataURL length] ? @"Sending image to Anchora…" : @"Waiting for Anchora…")];
+    [self.aiComposerModel setRequestInFlight:YES];
+    [self updateAIRequestStatus:[AnchoraPrompts sendingStatusWithHasFile:[fileDataURL length] > 0 hasImage:[imageDataURL length] > 0]];
 
     AnchoraResponsesClient *client = [[AnchoraResponsesClient alloc] initWithApiKey:apiKey request:request];
     __weak SKRightSideViewController *weakSelf = self;
@@ -1178,28 +959,7 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
 }
 
 - (NSString *)imageDataURLForEntirePage:(PDFPage *)page displayBox:(PDFDisplayBox)box {
-    if (page == nil)
-        return nil;
-    NSRect bounds = [page boundsForBox:box];
-    CGFloat scale = 2.0;
-    // Avoid producing an impractically large request for unusually large PDF pages.
-    CGFloat maximumPixels = 4096.0;
-    scale = MIN(scale, maximumPixels / MAX(NSWidth(bounds), NSHeight(bounds)));
-    NSInteger pixelsWide = (NSInteger)ceil(NSWidth(bounds) * scale);
-    NSInteger pixelsHigh = (NSInteger)ceil(NSHeight(bounds) * scale);
-    if (pixelsWide <= 0 || pixelsHigh <= 0)
-        return nil;
-    NSBitmapImageRep *imageRep = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL
-        pixelsWide:pixelsWide pixelsHigh:pixelsHigh bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO
-        colorSpaceName:NSCalibratedRGBColorSpace bitmapFormat:0 bytesPerRow:0 bitsPerPixel:32];
-    CGContextRef context = [[NSGraphicsContext graphicsContextWithBitmapImageRep:imageRep] CGContext];
-    CGContextSetRGBFillColor(context, 1.0, 1.0, 1.0, 1.0);
-    CGContextFillRect(context, CGRectMake(0.0, 0.0, pixelsWide, pixelsHigh));
-    CGContextScaleCTM(context, scale, scale);
-    CGContextTranslateCTM(context, -NSMinX(bounds), -NSMinY(bounds));
-    [page drawWithBox:box toContext:context];
-    NSData *jpegData = [imageRep representationUsingType:NSBitmapImageFileTypeJPEG properties:@{NSImageCompressionFactor: @0.9}];
-    return [jpegData length] ? [@"data:image/jpeg;base64," stringByAppendingString:[jpegData base64EncodedStringWithOptions:0]] : nil;
+    return page ? [AnchoraCapture pageImageDataURLWithPage:page box:box] : nil;
 }
 
 - (IBAction)summarizeCurrentPage:(id)sender {
@@ -1292,28 +1052,27 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
 - (void)appendStreamedAIText:(NSString *)text {
     if ([text length] == 0)
         return;
-    self.aiReceivedOutput = YES;
-    if (self.latestAIResponse == nil)
-        self.latestAIResponse = [NSMutableString string];
-    [self.latestAIResponse appendString:text];
+    [self.aiTurn setReceivedOutput:YES];
+    [[self.aiTurn response] appendString:text];
     [self.aiChatModel appendStreamedText:text];
 }
 
 - (void)finishAIRequestWithText:(NSString *)text webSources:(NSArray<NSString *> *)webSources errorMessage:(NSString *)errorMessage cancelled:(BOOL)cancelled {
     self.aiClient = nil;
+    AnchoraTurn *turn = self.aiTurn;
     if (cancelled) {
-        [self replaceStreamingPlaceholderWithText:@"Stopped. You can ask another question whenever you’re ready."];
+        [self.aiChatModel replaceStreamingMessageWith:[AnchoraPrompts stoppedMessage]];
     } else if ([errorMessage length]) {
-        [self replaceStreamingPlaceholderWithText:errorMessage];
+        [self.aiChatModel replaceStreamingMessageWith:errorMessage];
     } else {
         // Keep the complete response for Pin latest answer and memory, while
         // presenting the Paper Map itself as a compact navigator.  Do this
         // before adding web sources so the parser only sees the structured
         // paper analysis.
-        if ([text length] && [self.latestAIResponse length] == 0)
-            self.latestAIResponse = [text mutableCopy];
-        if (self.aiRequestIsPaperMap) {
-            [self presentPaperMapFromResponse:self.latestAIResponse];
+        if ([text length] && [[turn response] length] == 0)
+            [[turn response] setString:text];
+        if ([turn isPaperMap]) {
+            [self presentPaperMapFromResponse:[turn response]];
             [self.aiChatModel removeStreamingMessage];
         }
         if ([webSources count]) {
@@ -1322,16 +1081,14 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
                 [lines addObject:[NSString stringWithFormat:@"• %@", URLString]];
             NSString *sources = [lines componentsJoinedByString:@"\n"];
             [self appendChatMessageFrom:@"Web sources" text:sources];
-            [self.latestAIResponse appendFormat:@"\n\nWeb sources:\n%@", sources];
+            [[turn response] appendFormat:@"\n\nWeb sources:\n%@", sources];
         }
-        [self recordAIConversationRole:@"assistant" text:self.latestAIResponse];
+        [self recordAIConversationRole:@"assistant" text:[turn response]];
         [self.aiChatModel endStreaming];
     }
-    [self.pinResponseButton setEnabled:self.aiReceivedOutput && ([self.aiRequestSelection hasCharacters] || self.aiRequestPage != nil)];
-    [self.askAIButton setEnabled:YES];
-    [self.askAIButton setTitle:@"Send"];
-    self.aiRequestStatus = nil;
-    self.aiRequestIsPaperMap = NO;
+    [self.aiComposerModel setPinEnabled:[turn canPin]];
+    [self.aiComposerModel setRequestInFlight:NO];
+    [turn setStatus:nil];
 }
 
 - (void)resetAIConversationForNewDocument {
@@ -1340,12 +1097,7 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     if (self.aiPaperMapCard)
         [AnchoraHosting updatePaperMapView:self.aiPaperMapCard model:self.aiPaperMapModel pageLabels:[self pdfPageLabels]];
     self.aiConversation = [NSMutableArray array];
-    self.latestAIResponse = nil;
-    self.aiRequestStatus = nil;
-    self.aiRequestConversationUserText = nil;
-    self.aiRequestQuestion = nil;
-    self.aiRequestSourcePageIndexes = nil;
-    self.aiRequestIsPaperMap = NO;
+    self.aiTurn = nil;
     [self clearPaperMap];
     [self.aiChatModel clear];
     [self queueWelcomeMessage];
@@ -1355,37 +1107,26 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     [self.aiClient cancel];
     self.aiClient = nil;
     self.aiConversation = [NSMutableArray array];
-    self.latestAIResponse = nil;
-    self.aiRequestStatus = nil;
-    self.aiRequestSelection = nil;
-    self.aiRequestPage = nil;
-    self.aiRequestPageRect = NSZeroRect;
-    self.aiRequestImageDataURL = nil;
-    self.aiRequestConversationUserText = nil;
-    self.aiRequestQuestion = nil;
-    self.aiRequestSourcePageIndexes = nil;
-    self.aiReceivedOutput = NO;
-    self.aiRequestIsPaperMap = NO;
+    self.aiTurn = nil;
     [self clearPaperMap];
     [self.aiChatModel clear];
-    [self.pinResponseButton setEnabled:NO];
-    [self.askAIButton setEnabled:YES];
-    [self.askAIButton setTitle:@"Send"];
+    [self.aiComposerModel setPinEnabled:NO];
+    [self.aiComposerModel setRequestInFlight:NO];
 }
 
 - (IBAction)pinResponseToPDF:(id)sender {
-    PDFSelection *selection = self.aiRequestSelection;
+    AnchoraTurn *turn = self.aiTurn;
     // A PDF note holds plain text, and it has to stay readable in other PDF
     // apps too, so the answer's Markdown is flattened rather than pinned raw.
-    NSString *response = [self.latestAIResponse length] ? [AnchoraMarkdown plainTextFrom:self.latestAIResponse] : nil;
+    NSString *response = [[turn response] length] ? [AnchoraMarkdown plainTextFrom:[turn response]] : nil;
     if ([response length] == 0) {
         NSBeep();
         return;
     }
-    if ([selection hasCharacters])
-        [mainController pinAIResponse:response title:self.aiRequestQuestion forSelection:selection];
-    else if (self.aiRequestPage)
-        [mainController pinAIResponse:response title:self.aiRequestQuestion nearRect:self.aiRequestPageRect onPage:self.aiRequestPage];
+    if ([[turn selection] hasCharacters])
+        [mainController pinAIResponse:response title:[turn question] forSelection:[turn selection]];
+    else if ([turn page])
+        [mainController pinAIResponse:response title:[turn question] nearRect:[turn pageRect] onPage:[turn page]];
     else
         NSBeep();
 }

@@ -25,6 +25,13 @@ public final class AnchoraHosting: NSObject {
         return view
     }
 
+    @objc public static func composerView(model: AnchoraComposerModel) -> NSView {
+        hostingView(AnchoraComposerView(model: model))
+    }
+
+    /// The fixed height the composer's host should give it.
+    @objc public static var composerHeight: CGFloat { AnchoraComposerView.height }
+
     @objc public static func chatView(model: AnchoraChatModel) -> NSView {
         hostingView(AnchoraChatView(model: model))
     }

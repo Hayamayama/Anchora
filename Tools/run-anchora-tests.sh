@@ -8,6 +8,8 @@ trap 'rm -rf "$out"' EXIT
 swiftc -O -parse-as-library \
     "$root/Anchora/AnchoraPaperMap.swift" \
     "$root/Anchora/AnchoraMarkdown.swift" \
+    "$root/Anchora/AnchoraTextQuality.swift" \
+    "$root/Anchora/AnchoraTurn.swift" \
     "$root/Anchora/AnchoraPrompts.swift" \
     "$root/Anchora/AnchoraSettings.swift" \
     "$root/Anchora/AnchoraChatModel.swift" \

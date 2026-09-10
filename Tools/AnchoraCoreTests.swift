@@ -378,6 +378,97 @@ func testFormattingInstructionsMatchTheRenderer() {
     expect(instructions.contains("[PDF p. X]"), "the citation format is pinned so it stays literal")
 }
 
+// MARK: - Text quality
+
+/// Slide decks often carry a text layer that is really a broken font mapping:
+/// the characters live in a private use plane and come back as gibberish.
+func testTextQualityHeuristic() {
+    expect(AnchoraTextQuality.needsRecognition(rawText: "", cleanedText: "", textWithoutAliens: ""),
+           "an empty selection always needs recognition")
+    expect(AnchoraTextQuality.needsRecognition(rawText: "clean readable text",
+                                               cleanedText: "clean readable text",
+                                               textWithoutAliens: "clean readable text") == false,
+           "an intact text layer is trusted")
+    expect(AnchoraTextQuality.needsRecognition(rawText: "abcdefghij",
+                                               cleanedText: "abcdefghi",
+                                               textWithoutAliens: "abcdefghi") == false,
+           "one unreadable character in ten is tolerated")
+    expect(AnchoraTextQuality.needsRecognition(rawText: "abcdefghij",
+                                               cleanedText: "abcdef",
+                                               textWithoutAliens: "abcdef"),
+           "losing a third or more of the selection means the layer is not trustworthy")
+    expect(AnchoraTextQuality.needsRecognition(rawText: "abcdefghij",
+                                               cleanedText: "",
+                                               textWithoutAliens: "abcdefghi"),
+           "cleaning down to nothing means recognition, however few aliens there were")
+}
+
+// MARK: - Selection and turn
+
+func testSelectionGenerationAdvances() {
+    let first = AnchoraSelection.empty(message: "nothing", after: nil)
+    let second = AnchoraSelection.recognizing(selection: nil, hasTextSelection: false, page: nil, pageRect: .zero,
+                                              message: "reading…", after: first)
+    let third = AnchoraSelection.empty(message: "nothing", after: second)
+    expect(second.generation > first.generation, "a new selection advances the generation")
+    expect(third.generation > second.generation, "and keeps advancing")
+}
+
+/// Recognition runs off the main thread; its result must still belong to the
+/// selection the reader made, so finishing keeps the generation it started with.
+func testFinishingRecognitionKeepsItsGeneration() {
+    let pending = AnchoraSelection.recognizing(selection: nil, hasTextSelection: false, page: nil, pageRect: .zero,
+                                               message: "reading…", after: nil)
+    let finished = pending.byFinishingRecognition(text: "  recovered text  ", failureMessage: "failed")
+    expectEqual(finished.generation, pending.generation, "finishing recognition does not advance the generation")
+    expectEqual(finished.text, "recovered text", "recognised text is trimmed")
+    expectEqual(finished.contextDescription, "recovered text", "the context card shows what was recovered")
+    expect(finished.isRecognizingText == false, "recognition is no longer in progress")
+    expect(finished.hasContext, "recovered text counts as context")
+}
+
+func testFinishingRecognitionWithNothing() {
+    let pending = AnchoraSelection.recognizing(selection: nil, hasTextSelection: false, page: nil, pageRect: .zero,
+                                               message: "reading…", after: nil)
+    for empty in [nil, "", "   \n  "] {
+        let finished = pending.byFinishingRecognition(text: empty, failureMessage: "failed")
+        expect(finished.text == nil, "whitespace-only recognition yields no context")
+        expectEqual(finished.contextDescription, "failed", "the reader is told recognition failed")
+        expect(finished.hasContext == false, "a failed recognition is not sendable context")
+    }
+}
+
+func testSelectionContextStates() {
+    let empty = AnchoraSelection.empty(message: "Select text in the PDF to give AI context.", after: nil)
+    expect(empty.hasContext == false, "an empty selection has no context")
+    expect(empty.isRecognizingText == false, "an empty selection is not recognising")
+
+    let recognising = AnchoraSelection.recognizing(selection: nil, hasTextSelection: false, page: nil, pageRect: .zero,
+                                                   message: "reading…", after: empty)
+    expect(recognising.hasContext == false, "a selection mid-recognition has nothing to send yet")
+    expect(recognising.isRecognizingText, "a selection mid-recognition says so")
+}
+
+func testTurnCannotPinWithoutAnAnchorOrAnAnswer() {
+    let turn = AnchoraTurn(question: "Explain this", conversationUserText: "Explain this",
+                           selection: nil, hasTextSelection: false, page: nil, pageRect: .zero, imageDataURL: nil,
+                           sourcePageIndexes: [], isPaperMap: false, status: "Waiting…")
+    expect(turn.canPin == false, "a turn with no answer cannot be pinned")
+    turn.receivedOutput = true
+    expect(turn.canPin == false, "an answer with nowhere in the PDF to anchor it cannot be pinned")
+}
+
+func testTurnAccumulatesItsAnswer() {
+    let turn = AnchoraTurn(question: "Explain this", conversationUserText: "Explain this",
+                           selection: nil, hasTextSelection: false, page: nil, pageRect: .zero, imageDataURL: nil,
+                           sourcePageIndexes: [NSNumber(value: 3)], isPaperMap: true, status: nil)
+    turn.response.append("first ")
+    turn.response.append("second")
+    expectEqual(turn.response as String, "first second", "streamed deltas accumulate on the turn")
+    expectEqual(turn.sourcePageIndexes.map(\.intValue), [3], "the turn keeps the pages it was asked about")
+    expect(turn.isPaperMap, "the turn remembers it is a paper map")
+}
+
 // MARK: - Run
 
 // A multi-file swiftc invocation has no main.swift, so the entry point is
@@ -407,6 +498,13 @@ enum AnchoraCoreTests {
         testMarkdownPreservesCitations()
         testMarkdownPlainText()
         testFormattingInstructionsMatchTheRenderer()
+        testTextQualityHeuristic()
+        testSelectionGenerationAdvances()
+        testFinishingRecognitionKeepsItsGeneration()
+        testFinishingRecognitionWithNothing()
+        testSelectionContextStates()
+        testTurnCannotPinWithoutAnAnchorOrAnAnswer()
+        testTurnAccumulatesItsAnswer()
 
         if failures == 0 {
             print("AnchoraCoreTests: \(checks) checks passed")

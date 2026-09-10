@@ -346,6 +346,42 @@
 
 Paper Map 的段落內容維持既有的 evidence 標示與 Source quote 連結渲染，未套用 Markdown — 那裡的語意標示比粗體斜體更有價值，而且兩者的範圍計算會互相干擾。
 
+### 14:00–15:40 — turn state、擷取層與 composer 全面 Swift 化
+
+一次處理三件互相牽動的事，順序是「產生值 → 持有值 → 顯示值」。
+
+#### H：OCR、頁面渲染與圖像擷取移出 view controller
+
+- 新增 `AnchoraCapture`（PDFKit + Vision）：區域圖像、整頁圖像、以及區域文字辨識共用同一個 render 路徑。原本三處各自重複的 bitmap 建立、白底填色、縮放平移、4096px 上限現在只有一份。
+- 保留「渲染 PDF 內容而非截取 view」的原因註解 — 截圖會包含 Skim 的選取暗化覆蓋層，正好會讓這功能主要服務的大面積投影片區域辨識失準。
+- 新增 `AnchoraTextQuality`：判斷 PDF 文字層可不可信的純算術，可獨立測試。實際的 private-use-plane 字元掃描仍交給 Skim 的 `stringByRemovingAliens` — 那是一個仔細寫過的 workaround，不該重寫。
+- Vision 改用 `Task.detached` + `MainActor.run`，取代 `dispatch_async` 與手動 `CGImageRetain`／`CGImageRelease`。
+- `recognizeTextForCurrentSelection:generation:`、`recognizeTextInPageRect:`、`finishOCRWithText:` 三個方法收成一個。
+
+#### G：16 個平行 property 收成兩個 value type
+
+- `AnchoraSelection`：讀者當下的選取。不可變，每次轉換都是一個具名的 factory（`empty` / `text` / `recognizing` / `image` / `byFinishingRecognition`），CONTEXT 卡片要顯示的字串就放在產生該狀態的地方。
+- `AnchoraTurn`：送出請求當下拍的快照。問題、context 文字、選取／頁面錨點、來源頁碼、是否為 paper map、目前階段、累積的回覆。
+- 兩者分開正是重點：讀者會在回覆串流期間繼續閱讀與選取，而 Pin 必須把答案錨回它真正被問的那段內容。
+- generation 計數移進 `AnchoraSelection`；`byFinishingRecognition` 刻意**沿用**同一個 generation，因為那個結果仍然屬於讀者當初做的那次選取。
+- `hasCharacters` 由呼叫端傳入而不在 value type 內重算：那是 Skim 針對 PDFKit 的 workaround（一個 selection 可能宣稱有頁面卻沒有任何 text range），不該重寫，而且這樣 value type 就沒有 Skim 依賴、可以進測試。
+
+#### I：composer 與快捷列改為 SwiftUI
+
+- 快捷列與輸入列合併成單一 `AnchoraComposerView`，由 `AnchoraComposerModel` 驅動。view controller 不再建立或量測任何一個控制項。
+- 這一列正是側欄最嚴重那個 bug 的所在：用 `NSStackView` arranged subview 組出來，會讓 AppKit 在側欄還在安裝時就去問 fitting size，開檔時的量測迴圈可以吃掉數十 GB。等寬按鈕是框架可以直接表達的排版。
+- 等寬要套在 button 的 **label** 上：只放大 button 的 frame，bezel 仍會停在標題的自然寬度並置中（第一次渲染就是這個結果）。
+- composer 由 host 給固定高度而非回報 intrinsic size。裡面沒有任何會換行的東西，高度本來就不該取決於寬度；用固定高度是把這個保證寫進排版，而不是寄望於內容不變。
+- 快捷按鈕的 tooltip 移進 `AnchoraPrompts`，每個動作都有自己的說明，不再只是重複標題。
+
+#### 結果
+
+- `SKRightSideViewController.m`：1,508 → **1,249 行**（整個重構累計 2,256 → 1,249，少了 45%）。
+- 該檔的 `@property` 由 30 個降到 16 個，其中 AI 狀態只剩 `aiSelection`、`aiTurn`、`aiClient`、`aiConversation`、`webVerificationEnabled`。
+- Swift 檔案 17 個；測試 124 個檢查。
+- Debug／Release 建置成功、Anchora 程式碼警告 0、實跑 200 MB 無 constraint 衝突。
+- 實機確認：Study／Scientific 切換會重建快捷列與標題、三個與六個按鈕都等寬填滿窄側欄、Send 的提示去重、Clear chat 清空並停用 Pin、Web verify 可切換。串流與真實 API 路徑未在此輪重跑。
+
 ---
 
 ## 目前可用功能

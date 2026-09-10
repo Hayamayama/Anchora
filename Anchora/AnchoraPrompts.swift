@@ -96,6 +96,58 @@ public final class AnchoraPrompts: NSObject {
         }
     }
 
+    // MARK: - Context and status messages
+
+    /// What the CONTEXT card shows with nothing selected.
+    @objc public static func emptyContextMessage(profile: AnchoraReadingProfile) -> String {
+        (profile == .scientific)
+            ? "Select paper text, or capture a figure with Command-Option-drag."
+            : "Select text in the PDF to give AI context."
+    }
+
+    @objc public static let recognizingSelectionMessage = "Reading selected text with OCR…"
+    @objc public static let recognizingRegionMessage = "Reading selected area with OCR…"
+    @objc public static let recognitionFailureMessage =
+        "This PDF’s text layer could not be read. OCR could not recover this selection; try selecting a larger area."
+    @objc public static let imageReadyMessage = "Image ready — ask AI about this diagram, chart, or slide region."
+    @objc public static let imageCaptureFailureMessage =
+        "Could not capture this PDF area as an image. Try a smaller region."
+    @objc public static let pageRenderFailureMessage = "I could not render this page as an image."
+
+    @objc public static let selectionHint =
+        "Select text, Option-drag for OCR, or Command-Option-drag to send an image region. "
+        + "After the first question, you can ask a follow-up without selecting again."
+    @objc public static let recognitionInProgressHint =
+        "I’m still reading this selection with OCR. Try again in a moment."
+
+    @objc public static func pageAttachedMessage(pageNumber: Int) -> String {
+        "Page \(pageNumber) image attached for visual summary"
+    }
+
+    @objc public static func documentAttachedMessage(pageCount: Int) -> String {
+        "Complete PDF attached: \(pageCount) pages"
+    }
+
+    @objc public static let regionImageContextText = "A visual region of the PDF is attached."
+    @objc public static let pageImageContextText = "A complete rendered image of this PDF page is attached."
+    @objc public static let documentContextText = "The complete original PDF is attached."
+
+    /// The phase shown in the streaming bubble.  A full-PDF upload can take
+    /// long enough that silence reads as a hang.
+    @objc public static func preparingStatus(hasFile: Bool, hasImage: Bool) -> String {
+        if hasFile { return "Preparing the complete PDF…" }
+        if hasImage { return "Preparing the image…" }
+        return "Sending your question…"
+    }
+
+    @objc public static func sendingStatus(hasFile: Bool, hasImage: Bool) -> String {
+        if hasFile { return "Uploading PDF to Anchora…" }
+        if hasImage { return "Sending image to Anchora…" }
+        return "Waiting for Anchora…"
+    }
+
+    @objc public static let stoppedMessage = "Stopped. You can ask another question whenever you’re ready."
+
     // MARK: - Quick actions
 
     @objc public static func quickActionTitles(profile: AnchoraReadingProfile) -> [String] {
@@ -105,6 +157,26 @@ public final class AnchoraPrompts: NSObject {
         case .study:
             return ["Explain", "Translate", "Clinical"]
         }
+    }
+
+    @objc public static func quickActionTooltips(profile: AnchoraReadingProfile) -> [String] {
+        switch profile {
+        case .scientific:
+            return ["Rebuild the paper's argument as a navigable map",
+                    "Research problem, gap, and the precise question",
+                    "The hypothesis, and what would support it",
+                    "Design, groups, controls, outcomes, and analysis",
+                    "Axes, units, controls, and what the figure can establish",
+                    "An evidence chain: direct result, author interpretation, inference, and what remains unproven"]
+        case .study:
+            return ["Explain this step by step",
+                    "Translate into the configured response language",
+                    "Clinical relevance and practical implications"]
+        }
+    }
+
+    @objc public static func composerPlaceholder(profile: AnchoraReadingProfile) -> String {
+        (profile == .scientific) ? "Ask about this paper…" : "Ask about this selection…"
     }
 
     /// The compact label shown in chat for a whole-document scientific action.
