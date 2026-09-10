@@ -210,6 +210,16 @@
 		CE8BEFE3115F75590029020F /* SKSideViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = CE8BEFE2115F75590029020F /* SKSideViewController.m */; };
 		CE8BF027115F7C390029020F /* SKLeftSideViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = CE8BF026115F7C390029020F /* SKLeftSideViewController.m */; };
 		CE8BF02A115F7C5C0029020F /* SKRightSideViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = CE8BF029115F7C5C0029020F /* SKRightSideViewController.m */; };
+		AC00000000000000000000C8 /* AnchoraSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000064 /* AnchoraSettings.swift */; };
+		AC00000000000000000000C9 /* AnchoraCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000065 /* AnchoraCredentials.swift */; };
+		AC00000000000000000000CA /* AnchoraPrompts.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000066 /* AnchoraPrompts.swift */; };
+		AC00000000000000000000CB /* AnchoraPaperMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000067 /* AnchoraPaperMap.swift */; };
+		AC00000000000000000000CC /* AnchoraResponsesClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000068 /* AnchoraResponsesClient.swift */; };
+		AC0000000000000000000190 /* AnchoraChatModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC000000000000000000012C /* AnchoraChatModel.swift */; };
+		AC0000000000000000000191 /* AnchoraChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC000000000000000000012D /* AnchoraChatView.swift */; };
+		AC0000000000000000000192 /* AnchoraPaperMapModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC000000000000000000012E /* AnchoraPaperMapModel.swift */; };
+		AC0000000000000000000193 /* AnchoraPaperMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC000000000000000000012F /* AnchoraPaperMapView.swift */; };
+		AC0000000000000000000194 /* AnchoraHosting.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000130 /* AnchoraHosting.swift */; };
 		CE8BF069115F859A0029020F /* LeftSideView.xib in Resources */ = {isa = PBXBuildFile; fileRef = CE8BF068115F859A0029020F /* LeftSideView.xib */; };
 		CE8BF070115F892A0029020F /* RightSideView.xib in Resources */ = {isa = PBXBuildFile; fileRef = CE8BF06F115F892A0029020F /* RightSideView.xib */; };
 		CE8DC47024620A7E00BD5D50 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE8DC45E24620A7E00BD5D50 /* MetalKit.framework */; settings = {ATTRIBUTES = (Required, ); }; };
@@ -1095,6 +1105,17 @@
 		CE8BF026115F7C390029020F /* SKLeftSideViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = SKLeftSideViewController.m; sourceTree = "<group>"; };
 		CE8BF028115F7C5C0029020F /* SKRightSideViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SKRightSideViewController.h; sourceTree = "<group>"; };
 		CE8BF029115F7C5C0029020F /* SKRightSideViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = SKRightSideViewController.m; sourceTree = "<group>"; };
+		AC0000000000000000000064 /* AnchoraSettings.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraSettings.swift; sourceTree = "<group>"; };
+		AC0000000000000000000065 /* AnchoraCredentials.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraCredentials.swift; sourceTree = "<group>"; };
+		AC0000000000000000000066 /* AnchoraPrompts.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraPrompts.swift; sourceTree = "<group>"; };
+		AC0000000000000000000067 /* AnchoraPaperMap.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraPaperMap.swift; sourceTree = "<group>"; };
+		AC0000000000000000000068 /* AnchoraResponsesClient.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraResponsesClient.swift; sourceTree = "<group>"; };
+		AC000000000000000000012C /* AnchoraChatModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraChatModel.swift; sourceTree = "<group>"; };
+		AC000000000000000000012D /* AnchoraChatView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraChatView.swift; sourceTree = "<group>"; };
+		AC000000000000000000012E /* AnchoraPaperMapModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraPaperMapModel.swift; sourceTree = "<group>"; };
+		AC000000000000000000012F /* AnchoraPaperMapView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraPaperMapView.swift; sourceTree = "<group>"; };
+		AC0000000000000000000130 /* AnchoraHosting.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraHosting.swift; sourceTree = "<group>"; };
+		AC0000000000000000000069 /* Anchora-Bridging-Header.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Anchora-Bridging-Header.h; sourceTree = "<group>"; };
 		CE8BF068115F859A0029020F /* LeftSideView.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = LeftSideView.xib; sourceTree = "<group>"; };
 		CE8BF06F115F892A0029020F /* RightSideView.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = RightSideView.xib; sourceTree = "<group>"; };
 		CE8DC45E24620A7E00BD5D50 /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
@@ -1488,11 +1509,30 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		AC0000000000000000000001 /* Anchora */ = {
+			isa = PBXGroup;
+			children = (
+				AC0000000000000000000064 /* AnchoraSettings.swift */,
+				AC0000000000000000000065 /* AnchoraCredentials.swift */,
+				AC0000000000000000000066 /* AnchoraPrompts.swift */,
+				AC0000000000000000000067 /* AnchoraPaperMap.swift */,
+				AC0000000000000000000068 /* AnchoraResponsesClient.swift */,
+				AC000000000000000000012C /* AnchoraChatModel.swift */,
+				AC000000000000000000012D /* AnchoraChatView.swift */,
+				AC000000000000000000012E /* AnchoraPaperMapModel.swift */,
+				AC000000000000000000012F /* AnchoraPaperMapView.swift */,
+				AC0000000000000000000130 /* AnchoraHosting.swift */,
+				AC0000000000000000000069 /* Anchora-Bridging-Header.h */,
+			);
+			path = Anchora;
+			sourceTree = "<group>";
+		};
 		2A37F4AAFDCFA73011CA2CEA /* Skim */ = {
 			isa = PBXGroup;
 			children = (
 				45B113BF0B329A7E00DE0660 /* LICENSE */,
 				2A37F4ABFDCFA73011CA2CEA /* Classes */,
+				AC0000000000000000000001 /* Anchora */,
 				453DC2740B4F23E500A72509 /* Third Party Sources */,
 				2A37F4AFFDCFA73011CA2CEA /* Other Sources */,
 				CE4DA8CF0B9E157E0039E89C /* Help Tools */,
@@ -2958,6 +2998,16 @@
 				CE8BEFE3115F75590029020F /* SKSideViewController.m in Sources */,
 				CE8BF027115F7C390029020F /* SKLeftSideViewController.m in Sources */,
 				CE8BF02A115F7C5C0029020F /* SKRightSideViewController.m in Sources */,
+				AC00000000000000000000C8 /* AnchoraSettings.swift in Sources */,
+				AC00000000000000000000C9 /* AnchoraCredentials.swift in Sources */,
+				AC00000000000000000000CA /* AnchoraPrompts.swift in Sources */,
+				AC00000000000000000000CB /* AnchoraPaperMap.swift in Sources */,
+				AC00000000000000000000CC /* AnchoraResponsesClient.swift in Sources */,
+				AC0000000000000000000190 /* AnchoraChatModel.swift in Sources */,
+				AC0000000000000000000191 /* AnchoraChatView.swift in Sources */,
+				AC0000000000000000000192 /* AnchoraPaperMapModel.swift in Sources */,
+				AC0000000000000000000193 /* AnchoraPaperMapView.swift in Sources */,
+				AC0000000000000000000194 /* AnchoraHosting.swift in Sources */,
 				CE9768831161195C008DCB8F /* SKDownloadPreferenceController.m in Sources */,
 				CE121AC81180644A00951425 /* SKScriptMenu.m in Sources */,
 				CEFDEA9111F6FF8300D6FEBA /* NSScreen_SKExtensions.m in Sources */,
@@ -3787,7 +3837,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = CE17EE460E24ED7C00DE06EA /* Skim-App.xcconfig */;
 			buildSettings = {
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 			};
 			name = Debug;
 		};
@@ -3795,7 +3845,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = CE17EE460E24ED7C00DE06EA /* Skim-App.xcconfig */;
 			buildSettings = {
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 			};
 			name = Release;
 		};

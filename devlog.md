@@ -232,6 +232,99 @@
 
 ---
 
+## 2026-09-10
+
+### 10:40–11:30 — Swift 核心層與 mixed-language target
+
+- 決定不重寫 Skim，改採 **Swift island**：Skim 的 ObjC（PDFView、annotation、document I/O、undo）凍結不動，Anchora 自己的新程式碼一律寫在 Swift。
+- 最低系統版本由 `10.13` 提高至 **macOS 14.0**。這是不可逆的決定，換來 async/await 與後續 SwiftUI 的可用性；Apple Silicon 機器本來就到不了 10.13。
+- 在既有 `Skim` target 開啟 Swift（`SWIFT_VERSION = 5.0`、bridging header `Anchora/Anchora-Bridging-Header.h`、generated header `Anchora-Swift.h`），不新增 target。Debug 用 `-Onone`，Release 用 `-O` + `wholemodule`。
+- 語言模式刻意留在 Swift 5：AI 層會把 callback 交還給長生命週期的 AppKit 物件，Swift 6 strict concurrency 會要求改寫 Skim 自己擁有的程式碼。
+
+### 建立 `Anchora/` Swift 核心（815 行，零 AppKit、零 Skim 型別）
+
+- `AnchoraSettings`：reading profile、回覆語言、AI model 的 `NSUserDefaults` 保存與驗證。未知或不存在的 model 一律安全回退到 `gpt-5-mini`。
+- `AnchoraCredentials`：Keychain 讀寫與 `PDFBuddy.OpenAI` → `Anchora.OpenAI` 的舊金鑰遷移。
+- `AnchoraPrompts`：所有 system instruction、快捷動作 prompt、摘要 prompt、Paper map prompt 與歡迎訊息集中一處，不必翻 AppKit layout 程式碼就能檢視 Anchora 的閱讀行為。
+- `AnchoraPaperMap`：Paper map 的段落切分與 `[PDF p. X]` citation 解析。由呼叫端傳入頁面 label 陣列，因此完全不依賴 PDFKit，可獨立測試。
+- `AnchoraResponsesClient`：一次完整的 Responses API 串流。取代原本手寫的 `NSURLSessionDataDelegate` + SSE buffer，改用 `URLSession.bytes` 與 `for try await`；request 組裝、delta 批次化（0.12 秒）、web source 收集、HTTP/串流錯誤對應全部在此，呼叫端只看到 status／delta／finish 三個 main-thread callback。
+
+### `SKRightSideViewController.m` 瘦身
+
+- 2,256 行 → **1,906 行**（AI 相關淨減約 500 行）。
+- 移除的屬性：`aiSession`、`aiTask`、`aiEventData`、`aiPendingStreamText`、`aiStreamRenderScheduled`、`aiWebSourceURLs`、`aiReadingProfile`、`aiResponseLanguage`。
+- 移除的方法：`consumeAIEvents`、三個 `URLSession` delegate、`appendAIText:`、`collectWebSourcesFromObject:`、`webSourcesText`、`outputTextFromCompletedResponse:`、`availableAIModels`、`responseLanguageInstruction`、`storedOpenAIAPIKeyWithStatus:`，以及 `SKPaperMapSectionDefinitions` 與兩個 enum。
+- 取消請求改為只呼叫 `[self.aiClient cancel]`；UI 重置統一在 `finishAIRequestWithText:webSources:errorMessage:cancelled:` 一處處理，不再散落在 delegate 與 cancel 兩邊。
+- 送出請求的流程改為組裝 `AnchoraRequest` 後交給 `AnchoraResponsesClient`，view controller 不再直接接觸 JSON body、HTTP header 或 SSE。
+
+### 修正 Paper map 的 Limitations 段落解析
+
+- 移植時以獨立測試檢查八個 H2 段落，發現 `Limitations and unanswered questions` **從來沒有被切出來過**：原 regex 的 `and` 只存在於 `alternative explanations` 分支內，因此 prompt 實際要求的標題無法匹配，該段內容一直被併入前一段 `Authors’ interpretation`。
+- 已修正為 `Limitations?(?:,?\s*alternative\s+explanations?)?(?:,?\s*and)?\s*…`，兩種寫法都能匹配。八段切分與非結構化回覆的 fallback 皆通過測試。
+
+### 驗證
+
+- Debug 與 Release 皆建置成功；`SKRightSideViewController.m` 僅剩兩個既有警告（未使用的 `pdfView`、`clickedOnLink:` 參數型別），與本次修改無關。
+- Release bundle 以 ad-hoc 重簽後通過 `codesign --verify --deep --strict`；`LSMinimumSystemVersion` 已為 `14.0`，大小約 17 MB。
+
+### 後續（尚未進行）
+
+- 第 3 步：把聊天 bubble、Paper Map navigator 與 composer 改成 SwiftUI，塞進 `NSHostingView`。手算 `boundingRect` 高度、body/footer 三組 constraints 與 `refreshChatLayoutAndScrollToBottom:` 屆時可以整批移除。
+
+### 11:30–12:20 — 側欄 UI 改為 SwiftUI
+
+- 聊天紀錄與 Paper Map navigator 改成 SwiftUI，以 `NSHostingView` 掛進既有 AppKit 側欄。AppKit 只負責它們在側欄裡的位置與高度。
+- 新增：
+  - `AnchoraChatModel`／`AnchoraChatView`：訊息以資料形式存在，bubble 由 SwiftUI 排版。
+  - `AnchoraPaperMapModel`／`AnchoraPaperMapView`：段落選單、跳頁選單、evidence 標示與 Source quote 連結。
+  - `AnchoraHosting`：提供 ObjC 可呼叫的 hosting view factory。
+- `NSHostingView.sizingOptions` 刻意設為空。會回報 intrinsic content size 的 hosting view 會重現當初手寫 chat stack 的量測迴圈：側欄決定寬度 → view 量測文字 → 高度回饋給側欄。現在這兩個 view 完全由外部 constraints 決定尺寸。
+
+### 因此整批刪除的程式碼
+
+- `refreshChatLayoutAndScrollToBottom:`：包含用 `boundingRect` 手算每個 bubble 文字高度、`AnchoraChatBodyHeight` constraint 的更新、以及避開 `fittingSize` 的整段防禦邏輯。
+- `appendChatMessageFrom:` 裡建構 bubble 的約 90 行 constraint 程式碼（sender label、body、source footer 的 top/height/bottom 三組 constraint）。
+- `flushPendingAIStreamText` 中為了讓 `NSTextField` 在串流 `setStringValue:` 後重新計算高度而做的 `invalidateIntrinsicContentSize` / `setNeedsLayout:` 連鎖呼叫。
+- `chatLabelWithString:`、`clearRenderedChat`、`paperMapDetailAttributedString:`、`textView:clickedOnLink:atIndex:`、`showPaperMapSectionAtIndex:`、`selectPaperMapSection:`、`openPaperMapSource:`、`togglePaperMap:`、`appendPendingWelcomeMessageIfPossible`。
+- 因為側欄寬度為零時不再需要延後渲染，歡迎訊息的 pending／重試機制也一併移除。
+- `SKRightSideViewController.m`：1,906 → **1,508 行**（自本次重構開始累計 2,256 → 1,508）。
+
+### 修正「Hide」之後無法叫回 Paper Map
+
+- 原本 `togglePaperMap:` 收合時會把整張卡片 `setHidden:YES`，而 `Show Paper Map` 按鈕就在那張卡片裡；一旦按下 Hide，除非重新產生一份 Paper Map，否則沒有任何方式把它叫回來。
+- 新版收合後保留 34pt 的標題列（`PAPER MAP` + Show/Hide），卡片只有在完全沒有 Paper Map 時才是零高度。
+
+### 驗證
+
+- Debug 與 Release 皆建置成功；Release ad-hoc 重簽後通過 `codesign --verify --deep --strict`，約 17 MB。
+- 實際開啟 PDF 執行：常駐約 192 MB、CPU 閒置 0%，主控台沒有 constraint 衝突或 exception。
+- 實機確認：AI 側欄可正常切換、Study／Scientific 切換會重建快捷列與標題、重複的提示訊息只會出現一次（`containsText:` 去重路徑）。
+- 使用者 bubble、串流回覆 bubble、來源 chip、Web sources 與 Paper Map 需要 API 請求才會出現，改以離線 preview harness 用範例資料渲染真實 view 驗證，避免消耗 API 額度。來源 chip 確認落在回答最後一行下方，不再重疊。
+
+### 12:20–13:10 — 缺陷修正、測試與 1.2.0
+
+**修正串流 client 的 data race。** `pendingDelta`、`flushScheduled`、`finished`、`task` 同時被三個執行脈絡碰觸：串流 task、delta flush task，以及主執行緒的 `cancel()`，且完全沒有同步。以 `NSLock` 保護這四個欄位；`receivedText` 與 `webSources` 維持只在 `run()` 內讀寫，`cancel()` 不再跨執行緒讀它們（取消路徑本來就不使用回覆內容與來源）。
+
+**強化 `AnchoraChatModel` 的索引。** `Clear chat` 取消請求後，仍可能有已在路上的 delta 抵達。所有 `streamingIndex` 的使用改為先驗證範圍，避免越界。
+
+**Anchora 程式碼的編譯警告清為 0**（原 46 個）：`buildAIInterface` 的區域變數 `aiView` 與快捷列的 `button` 遮蔽 Skim 的 ivar、未使用的 `pdfView`、以及只寫不讀的 `webVerificationButton`。
+
+**新增 `Tools/AnchoraCoreTests.swift` 與 `Tools/run-anchora-tests.sh`（59 個檢查）。** 沿用 `StandardAnnotationSmokeTest.swift` 既有的獨立 `swiftc` runner 模式，不動 Xcode 專案。涵蓋：
+
+- Paper map 的八段切分、Limitations 的三種標題寫法、空段落佔位、非結構化回覆的 fallback。
+- Citation 解析：單頁、頁碼範圍、逗號分隔、重複去除、超出頁數丟棄，以及羅馬數字／`S1` 這類非數字 label。
+- **Prompt 與 parser 的契約**：從 `paperMapPrompt` 抽出它要求的八個標題，逐一確認 parser 認得。Limitations 那個 bug 之所以能存活，正是因為這兩邊沒有任何東西綁住。
+- Settings：未設定時回退、拒絕不在清單中的 model、已移除的舊 model 安全回退、profile 跨實例保存。
+- Chat：串流生命週期（placeholder → 第一個 delta 取代而非附加 → 後續附加）、Stop 與錯誤在「有／沒有部分輸出」兩種情況下的行為、Paper Map 移除自己的 bubble、Clear chat 之後遲到的 delta 不會崩潰、提示訊息去重。
+
+**版本升為 `1.2.0 (4)`；`Distribution/Anchora-1.2.0-macos-arm64.zip`（8.5 MB）已產出並通過 ad-hoc 簽章驗證。**
+
+**README**：補上 macOS 14.0 最低需求、更新建置需求說明、更新 release asset 檔名與 SHA-256、新增執行測試的說明。
+
+使用者已實測真實 API 請求：串流、回應與 Pin 流程皆正常。
+
+---
+
 ## 目前可用功能
 
 ### PDF 與筆記
@@ -300,8 +393,10 @@ codesign --verify --deep --strict --verbose=2 Distribution/PDFBuddy.app
 
 ## 發行位置
 
-- Release app：`Distribution/Anchora-1.1.0.app`
-- 版本：`1.1.0 (2)`
+- Release app：`Distribution/Anchora.app`
+- Release 附件：`Distribution/Anchora-1.2.0-macos-arm64.zip`（8.5 MB）
+- 版本：`1.2.0 (4)`
+- 最低系統：macOS 14.0
 - 大小：約 17 MB
 - Bundle ID：`com.kris.anchora`
 
@@ -309,6 +404,5 @@ codesign --verify --deep --strict --verbose=2 Distribution/PDFBuddy.app
 
 - AI 回覆的 `Copy`、`Pin as anchor`、`Pin as text note` 行動列。
 - 以「主題 → 頁碼」呈現的 PDF 學習地圖。
-- Notes 依使用者筆記、AI 筆記與 highlight 篩選。
 - 更完整的 markdown／頁碼連結渲染。
 - 使用 Developer ID 簽章與 notarization，支援正式對外散布。

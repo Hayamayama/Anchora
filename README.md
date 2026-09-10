@@ -15,9 +15,10 @@ The key is stored only in your macOS Keychain. It is never saved inside a PDF or
 
 > ChatGPT Plus and an OpenAI API account are billed separately. Anchora uses your OpenAI Platform API key, so API usage (including Web verify) is charged to that API account.
 
-### System requirement
+### System requirements
 
-The published binary is built for Apple Silicon Macs (`arm64`). Intel support requires a separately built universal/Intel release.
+- **macOS 14.0 or later.**
+- **Apple Silicon (`arm64`).** Intel support requires a separately built universal/Intel release.
 
 ## Use it
 
@@ -30,7 +31,7 @@ The published binary is built for Apple Silicon Macs (`arm64`). Intel support re
 
 ## Build from source
 
-Requirements: current Xcode and macOS.
+Requirements: current Xcode, and macOS 14.0 or later (the deployment target).
 
 ```sh
 xcodebuild -project Skim.xcodeproj -scheme Skim -configuration Release \
@@ -51,8 +52,18 @@ After pushing the source changes, create a GitHub Release and attach the prepare
 Current release asset checksum:
 
 ```text
-Anchora-1.0.0-macos-arm64.zip
-SHA-256: d8ef7f02be9cb2fd48c74f071a819b4dc4bf60954d66517f20a072e2ef509cb4
+Anchora-1.2.0-macos-arm64.zip
+SHA-256: 83c6030bce676959f26259ac8a675c0018f92801e0dded22a4ad5b601afe7dc0
+```
+
+## Run the tests
+
+Anchora's own logic — the paper map parser, prompts, settings, and the chat
+transcript model — is Swift with no AppKit or Skim dependency, so it can be
+exercised without building the app:
+
+```sh
+Tools/run-anchora-tests.sh
 ```
 
 ## License and attribution

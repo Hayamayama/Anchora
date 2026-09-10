@@ -1,7 +1,7 @@
 SDKROOT = macosx
 DEBUG_INFORMATION_FORMAT = dwarf
 ARCHS = $(ARCHS_STANDARD)
-MACOSX_DEPLOYMENT_TARGET = 10.13
+MACOSX_DEPLOYMENT_TARGET = 14.0
 
 COPY_PHASE_STRIP = NO
 STRIP_INSTALLED_PRODUCT = NO
@@ -17,6 +17,13 @@ ALWAYS_SEARCH_USER_PATHS = NO
 LD_RUNPATH_SEARCH_PATHS = @loader_path/../Frameworks
 
 CLANG_ENABLE_OBJC_ARC = YES
+
+// Anchora's own code lives in Swift under Anchora/.  Swift 5 language mode
+// is deliberate: the AI layer hands callbacks back to long-lived AppKit
+// objects, which Swift 6 strict concurrency would reject without
+// restructuring code that Skim itself owns.
+SWIFT_VERSION = 5.0
+ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO
 
 
 GCC_ENABLE_CPP_EXCEPTIONS = NO
