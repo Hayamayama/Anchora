@@ -38,6 +38,18 @@ public final class AnchoraCapture: NSObject {
 
     // MARK: - Rendering
 
+    /// `page.draw(with:to:)` places the display box's origin at the context
+    /// origin, so a page point lands at `p - bounds.origin`.  A rectangle
+    /// reported by the view is in the page's own coordinates and still carries
+    /// that origin, so it has to be subtracted here too.  Slide decks exported
+    /// to PDF routinely have a box that does not start at zero, and without
+    /// this the captured region is displaced by exactly that origin -- far
+    /// enough on a real deck to capture the slide title instead of the block
+    /// the reader dragged around.
+    static func renderTranslation(for rect: NSRect, pageBounds: NSRect) -> CGPoint {
+        CGPoint(x: -(rect.minX - pageBounds.minX), y: -(rect.minY - pageBounds.minY))
+    }
+
     private static func render(page: PDFPage, box: PDFDisplayBox, rect: NSRect, scale requestedScale: CGFloat) -> NSBitmapImageRep? {
         guard rect.isEmpty == false else { return nil }
         let scale = min(requestedScale, maximumPixelsPerSide / max(rect.width, rect.height))
@@ -57,7 +69,8 @@ public final class AnchoraCapture: NSObject {
         context.setFillColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0)
         context.fill(CGRect(x: 0, y: 0, width: pixelsWide, height: pixelsHigh))
         context.scaleBy(x: scale, y: scale)
-        context.translateBy(x: -rect.minX, y: -rect.minY)
+        let translation = renderTranslation(for: rect, pageBounds: page.bounds(for: box))
+        context.translateBy(x: translation.x, y: translation.y)
         page.draw(with: box, to: context)
         return imageRep
     }

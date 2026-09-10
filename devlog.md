@@ -424,6 +424,18 @@ Paper Map 的段落內容維持既有的 evidence 標示與 Source quote 連結�
 
 版本 `1.3.2 (7)`；測試 128 個檢查。
 
+### 1.3.3 — 擷取區域被頁面 box 原點平移
+
+使用者框選投影片中間的一段文字，CONTEXT 卻顯示投影片標題（在框外）。上一輪我把類似現象判斷為「前一次拖曳殘留」，那是錯的。
+
+- **根因：`page.draw(with:to:)` 會把顯示 box 的原點移到 context 原點**，因此頁面上的點 `p` 會被畫在 `p - bounds.origin`。而 view 回報的選取矩形是頁面自身座標、仍帶著那個原點，所以平移時必須一併扣掉。原本只有 `-rect.minX / -rect.minY`。
+- 頁面 box 原點為 (0,0) 時兩者等價 — 這正是先前的測試沒抓到的原因，我用的測試 PDF 原點就是 (0,0)。簡報匯出的 PDF 則經常不是。
+- 以原點 (50, 30) 的 PDF 驗證：修正前框選中段讀到 `OLE BRAVO the target`（被平移並切掉開頭），修正後為 `MIDDLE BRAVO the target`；標題區域、中段區域、整頁三種情況現在都正確。
+- **影響範圍不只 OCR。** 同一個 render 路徑也供 `Command + Option` 圖像擷取與整頁摘要使用，因此在這類 PDF 上送給模型的圖片同樣是偏移的。整頁擷取原本會被平移兩次（`rect` 與 `bounds` 各扣一次原點）。
+- 平移計算抽成 `AnchoraCapture.renderTranslation(for:pageBounds:)`，加上三個回歸測試：原點偏移的頁面、整頁擷取（平移應為零）、原點本來就是零的頁面。
+
+版本 `1.3.3 (8)`；測試 131 個檢查。
+
 ---
 
 ## 目前可用功能
@@ -495,8 +507,8 @@ codesign --verify --deep --strict --verbose=2 Distribution/PDFBuddy.app
 ## 發行位置
 
 - Release app：`Distribution/Anchora.app`
-- Release 附件：`Distribution/Anchora-1.3.2-macos-arm64.zip`（8.6 MB）
-- 版本：`1.3.2 (7)`
+- Release 附件：`Distribution/Anchora-1.3.3-macos-arm64.zip`（8.6 MB）
+- 版本：`1.3.3 (8)`
 - 最低系統：macOS 14.0
 - 大小：約 17 MB
 - Bundle ID：`com.kris.anchora`

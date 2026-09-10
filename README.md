@@ -52,8 +52,8 @@ After pushing the source changes, create a GitHub Release and attach the prepare
 Current release asset checksum:
 
 ```text
-Anchora-1.3.2-macos-arm64.zip
-SHA-256: eb8e580b5c58be55ed78e92725fe298010c5de3b36e5940d18d122202432b93a
+Anchora-1.3.3-macos-arm64.zip
+SHA-256: 23b60890e3d130a1ce5626ee43bff458bcd47e3ec1b71dae4e463d8bf59df475
 ```
 
 ## Run the tests

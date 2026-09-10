@@ -10,6 +10,7 @@ swiftc -O -parse-as-library \
     "$root/Anchora/AnchoraMarkdown.swift" \
     "$root/Anchora/AnchoraTextQuality.swift" \
     "$root/Anchora/AnchoraTurn.swift" \
+    "$root/Anchora/AnchoraCapture.swift" \
     "$root/Anchora/AnchoraPrompts.swift" \
     "$root/Anchora/AnchoraSettings.swift" \
     "$root/Anchora/AnchoraChatModel.swift" \

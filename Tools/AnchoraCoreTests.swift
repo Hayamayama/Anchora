@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 // Behavioural tests for Anchora's Swift core: the paper map parser, the
 // prompt/parser contract, settings persistence, and the chat transcript model.
@@ -423,6 +424,32 @@ func testRecognitionLanguageResolution() {
                 "a machine that reports nothing falls back too")
 }
 
+// MARK: - Capture geometry
+
+/// A slide deck exported to PDF routinely has a display box that does not
+/// start at zero.  Drawing places that origin at the context origin, so a
+/// rectangle reported in page coordinates has to have it subtracted as well --
+/// otherwise the capture is displaced by exactly the box origin, which on a
+/// real deck was far enough to read the slide title instead of the block the
+/// reader dragged around.
+func testCaptureTranslationSubtractsTheBoxOrigin() {
+    let offsetBounds = CGRect(x: 50, y: 30, width: 600, height: 800)
+    expectEqual(AnchoraCapture.renderTranslation(for: CGRect(x: 85, y: 425, width: 530, height: 70),
+                                                 pageBounds: offsetBounds),
+                CGPoint(x: -35, y: -395),
+                "an offset box origin is subtracted from the region's own origin")
+
+    expectEqual(AnchoraCapture.renderTranslation(for: offsetBounds, pageBounds: offsetBounds),
+                CGPoint(x: 0, y: 0),
+                "capturing the whole page needs no translation at all")
+
+    let zeroBounds = CGRect(x: 0, y: 0, width: 600, height: 800)
+    expectEqual(AnchoraCapture.renderTranslation(for: CGRect(x: 85, y: 425, width: 530, height: 70),
+                                                 pageBounds: zeroBounds),
+                CGPoint(x: -85, y: -425),
+                "a page that already starts at zero is unaffected")
+}
+
 // MARK: - Selection and turn
 
 func testSelectionGenerationAdvances() {
@@ -520,6 +547,7 @@ enum AnchoraCoreTests {
         testFormattingInstructionsMatchTheRenderer()
         testTextQualityHeuristic()
         testRecognitionLanguageResolution()
+        testCaptureTranslationSubtractsTheBoxOrigin()
         testSelectionGenerationAdvances()
         testFinishingRecognitionKeepsItsGeneration()
         testFinishingRecognitionWithNothing()
