@@ -215,6 +215,8 @@
 		AC00000000000000000000CA /* AnchoraPrompts.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000066 /* AnchoraPrompts.swift */; };
 		AC00000000000000000000CB /* AnchoraPaperMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000067 /* AnchoraPaperMap.swift */; };
 		AC00000000000000000000CC /* AnchoraResponsesClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000068 /* AnchoraResponsesClient.swift */; };
+		AC0000000000000000000258 /* AnchoraMarkdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC00000000000000000001F4 /* AnchoraMarkdown.swift */; };
+		AC0000000000000000000259 /* AnchoraMarkdownText.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC00000000000000000001F5 /* AnchoraMarkdownText.swift */; };
 		AC0000000000000000000190 /* AnchoraChatModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC000000000000000000012C /* AnchoraChatModel.swift */; };
 		AC0000000000000000000191 /* AnchoraChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC000000000000000000012D /* AnchoraChatView.swift */; };
 		AC0000000000000000000192 /* AnchoraPaperMapModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC000000000000000000012E /* AnchoraPaperMapModel.swift */; };
@@ -1110,6 +1112,8 @@
 		AC0000000000000000000066 /* AnchoraPrompts.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraPrompts.swift; sourceTree = "<group>"; };
 		AC0000000000000000000067 /* AnchoraPaperMap.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraPaperMap.swift; sourceTree = "<group>"; };
 		AC0000000000000000000068 /* AnchoraResponsesClient.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraResponsesClient.swift; sourceTree = "<group>"; };
+		AC00000000000000000001F4 /* AnchoraMarkdown.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraMarkdown.swift; sourceTree = "<group>"; };
+		AC00000000000000000001F5 /* AnchoraMarkdownText.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraMarkdownText.swift; sourceTree = "<group>"; };
 		AC000000000000000000012C /* AnchoraChatModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraChatModel.swift; sourceTree = "<group>"; };
 		AC000000000000000000012D /* AnchoraChatView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraChatView.swift; sourceTree = "<group>"; };
 		AC000000000000000000012E /* AnchoraPaperMapModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraPaperMapModel.swift; sourceTree = "<group>"; };
@@ -1517,6 +1521,8 @@
 				AC0000000000000000000066 /* AnchoraPrompts.swift */,
 				AC0000000000000000000067 /* AnchoraPaperMap.swift */,
 				AC0000000000000000000068 /* AnchoraResponsesClient.swift */,
+				AC00000000000000000001F4 /* AnchoraMarkdown.swift */,
+				AC00000000000000000001F5 /* AnchoraMarkdownText.swift */,
 				AC000000000000000000012C /* AnchoraChatModel.swift */,
 				AC000000000000000000012D /* AnchoraChatView.swift */,
 				AC000000000000000000012E /* AnchoraPaperMapModel.swift */,
@@ -3003,6 +3009,8 @@
 				AC00000000000000000000CA /* AnchoraPrompts.swift in Sources */,
 				AC00000000000000000000CB /* AnchoraPaperMap.swift in Sources */,
 				AC00000000000000000000CC /* AnchoraResponsesClient.swift in Sources */,
+				AC0000000000000000000258 /* AnchoraMarkdown.swift in Sources */,
+				AC0000000000000000000259 /* AnchoraMarkdownText.swift in Sources */,
 				AC0000000000000000000190 /* AnchoraChatModel.swift in Sources */,
 				AC0000000000000000000191 /* AnchoraChatView.swift in Sources */,
 				AC0000000000000000000192 /* AnchoraPaperMapModel.swift in Sources */,

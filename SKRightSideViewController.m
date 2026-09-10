@@ -1375,7 +1375,9 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
 
 - (IBAction)pinResponseToPDF:(id)sender {
     PDFSelection *selection = self.aiRequestSelection;
-    NSString *response = self.latestAIResponse;
+    // A PDF note holds plain text, and it has to stay readable in other PDF
+    // apps too, so the answer's Markdown is flattened rather than pinned raw.
+    NSString *response = [self.latestAIResponse length] ? [AnchoraMarkdown plainTextFrom:self.latestAIResponse] : nil;
     if ([response length] == 0) {
         NSBeep();
         return;

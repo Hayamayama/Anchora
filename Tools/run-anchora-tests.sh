@@ -7,6 +7,7 @@ out=$(mktemp -d)
 trap 'rm -rf "$out"' EXIT
 swiftc -O -parse-as-library \
     "$root/Anchora/AnchoraPaperMap.swift" \
+    "$root/Anchora/AnchoraMarkdown.swift" \
     "$root/Anchora/AnchoraPrompts.swift" \
     "$root/Anchora/AnchoraSettings.swift" \
     "$root/Anchora/AnchoraChatModel.swift" \

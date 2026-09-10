@@ -323,6 +323,29 @@
 
 使用者已實測真實 API 請求：串流、回應與 Pin 流程皆正常。
 
+### 13:10–14:00 — Markdown 回覆渲染
+
+回覆改為要求並渲染 Markdown。
+
+**為什麼需要自己切 block。** SwiftUI 的 `AttributedString(markdown:)` 只理解**行內**語法。`## 標題`、`- 條列`、程式碼區塊會被解析成 presentation intent，而 `Text` 直接把它丟掉 — 也就是說 `- item` 會渲染成沒有項目符號的一行字。因此新增 `AnchoraMarkdown` 先把回答切成 block（段落、標題、有序／無序條列與其縮排層級、引言、程式碼區塊、分隔線），只把行內範圍交給 `AttributedString`；`AnchoraMarkdownText` 再逐一排版。
+
+**block id 是位置而不是每次解析新產生的 UUID。** 串流時每次 flush 都會重新解析整份回答；若用 `UUID()`，SwiftUI 每秒會拆掉重建全部 block（一份 paper map 約 112 個）八次，而且讀者正在進行的文字選取會被中斷。實測完整重新解析一份 7.6 KB 的回答約 1.9 ms，因此不需要快取，只需要穩定的身分。
+
+**Prompt。** system instructions 加入格式規則，並且刻意寫明限制的原因：不得整份包在 code fence（會渲染成一整塊灰底）、不得使用 Markdown 表格（renderer 沒有表格 block）、`[PDF p. X]` 必須維持字面形式（Paper Map 之後要靠它解析，且不能被當成 Markdown 連結）。同時要求結構與長度相稱 — 一兩句話的回答就是一個段落，不加標題也不加條列。
+
+**Pin 回 PDF 會先攤平 Markdown。** PDF 註記是純文字，且要在其他 PDF app 裡也讀得下去，所以 `AnchoraMarkdown.plainText(from:)` 會把粗體、反引號與標題標記去掉，條列轉成 `• `、引言轉成引號。
+
+**渲染時抓到並修掉的四個問題：**
+
+- 標題沒有變大變粗：`inlineText` 內層的 `.font` 蓋過外層的標題字體，所有 block 都以本文大小渲染。字體改為由各 block 決定。
+- `` `code` `` 沒有樣式：`Text` 會自動處理粗體、斜體與連結，但 code 只帶 presentation intent。現在逐一走訪 run，替 code 範圍套上等寬字體。
+- `Web sources` 被當成 Markdown：那是我們自己組的字串不是模型輸出，兩行網址被 parser 併成一個段落。已排除在 Markdown 渲染之外（使用者訊息與請求階段的 placeholder 同樣排除）。
+- 條列項目沒有撐滿可用寬度。
+
+**測試增加到 94 個檢查**：block 種類辨識、巢狀縮排、串流中的半成品語法（未閉合的 fence 與粗體）、block id 穩定性、citation 不被當成連結且切分後仍可解析、pin 用的純文字攤平，以及「格式規則與 renderer 能力一致」的檢查。
+
+Paper Map 的段落內容維持既有的 evidence 標示與 Source quote 連結渲染，未套用 Markdown — 那裡的語意標示比粗體斜體更有價值，而且兩者的範圍計算會互相干擾。
+
 ---
 
 ## 目前可用功能
@@ -404,5 +427,6 @@ codesign --verify --deep --strict --verbose=2 Distribution/PDFBuddy.app
 
 - AI 回覆的 `Copy`、`Pin as anchor`、`Pin as text note` 行動列。
 - 以「主題 → 頁碼」呈現的 PDF 學習地圖。
-- 更完整的 markdown／頁碼連結渲染。
+- Paper Map 段落內容的 Markdown 渲染（需與既有的 evidence／quote 範圍標示整合）。
+- Markdown 表格支援。
 - 使用 Developer ID 簽章與 notarization，支援正式對外散布。

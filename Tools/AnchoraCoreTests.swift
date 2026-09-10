@@ -266,6 +266,118 @@ func testChatSenderNames() {
     expectEqual(model.messages.map(\.senderName), ["You", "Anchora", "Web sources"], "each kind labels itself")
 }
 
+// MARK: - Markdown
+
+func testMarkdownBlockKinds() {
+    let blocks = AnchoraMarkdown.blocks(from: """
+    ## Findings
+    A paragraph that wraps
+    across two source lines.
+
+    - first point
+    - second point
+    1. step one
+    2. step two
+    > a quoted sentence
+    ---
+    ```swift
+    let x = 1
+    ```
+    """)
+    let kinds = blocks.map(\.kind)
+    expectEqual(kinds.count, 9, "every block is recognised")
+    expectEqual(kinds[0], .heading(level: 2), "## becomes a level-2 heading")
+    expectEqual(blocks[0].text, "Findings", "the heading marker is not part of the text")
+    expectEqual(kinds[1], .paragraph, "prose becomes a paragraph")
+    expectEqual(blocks[1].text, "A paragraph that wraps across two source lines.",
+                "soft-wrapped source lines join into one paragraph")
+    expectEqual(kinds[2], .listItem(marker: "•", depth: 0), "- becomes a bullet")
+    expectEqual(blocks[2].text, "first point", "the bullet marker is not part of the text")
+    expectEqual(kinds[4], .listItem(marker: "1.", depth: 0), "1. keeps its own number")
+    expectEqual(kinds[5], .listItem(marker: "2.", depth: 0), "an ordered list is not renumbered from one")
+    expectEqual(kinds[6], .quote, "> becomes a quote")
+    expectEqual(kinds[7], .rule, "--- becomes a rule")
+    expectEqual(kinds[8], .codeBlock(language: "swift"), "a fence keeps its language")
+    expectEqual(blocks[8].text, "let x = 1", "code keeps its content without the fences")
+}
+
+func testMarkdownNestedList() {
+    let blocks = AnchoraMarkdown.blocks(from: "- top\n  - nested\n    - deeper")
+    expectEqual(blocks.map(\.kind), [.listItem(marker: "•", depth: 0),
+                                    .listItem(marker: "•", depth: 1),
+                                    .listItem(marker: "•", depth: 2)],
+                "indentation becomes nesting depth")
+}
+
+/// Every flush during streaming re-parses a partial answer, so half-written
+/// syntax must degrade rather than throw away text.
+func testMarkdownHandlesPartialStreamedText() {
+    let unclosedFence = AnchoraMarkdown.blocks(from: "## Title\n```swift\nlet x = 1")
+    expectEqual(unclosedFence.count, 2, "an unclosed fence still yields its block")
+    expectEqual(unclosedFence[1].text, "let x = 1", "an unclosed fence keeps the code that has arrived")
+
+    let unclosedBold = AnchoraMarkdown.inline("this is **half a bold span")
+    expect(String(unclosedBold.characters).contains("half a bold span"),
+           "an unclosed bold span keeps its text")
+
+    expectEqual(AnchoraMarkdown.blocks(from: "").count, 0, "an empty answer yields no blocks")
+    expectEqual(AnchoraMarkdown.blocks(from: "#").count, 1, "a lone hash is prose, not a heading")
+}
+
+/// A re-parse must not change block identity, or SwiftUI rebuilds the whole
+/// answer on every flush and drops the reader's selection.
+func testMarkdownBlockIdentityIsStable() {
+    let full = "## A\n- one\n- two\n\nprose"
+    let firstPass = AnchoraMarkdown.blocks(from: full)
+    let secondPass = AnchoraMarkdown.blocks(from: full)
+    expectEqual(firstPass.map(\.id), secondPass.map(\.id), "re-parsing the same answer keeps block ids")
+
+    let growing = AnchoraMarkdown.blocks(from: full + "\n\nmore prose")
+    expectEqual(Array(growing.map(\.id).prefix(firstPass.count)), firstPass.map(\.id),
+                "blocks already on screen keep their ids as an answer grows")
+}
+
+/// The citation format has to survive Markdown parsing untouched, because the
+/// Paper Map resolves it afterwards.
+func testMarkdownPreservesCitations() {
+    let blocks = AnchoraMarkdown.blocks(from: "- **Direct evidence:** the assay failed [PDF p. 4]")
+    expectEqual(blocks.count, 1, "a bold-led bullet is still one bullet")
+    let rendered = String(AnchoraMarkdown.inline(blocks[0].text).characters)
+    expect(rendered.contains("[PDF p. 4]"), "a citation is not consumed as a Markdown link")
+    expect(rendered.contains("**") == false, "the bold markers themselves are consumed")
+    expect(rendered.contains("Direct evidence:"), "the bold text survives")
+
+    expectEqual(AnchoraPaperMap.pageIndexes(inText: blocks[0].text, pageLabels: labels).map(\.intValue), [3],
+                "the citation still resolves after block splitting")
+}
+
+/// A pinned PDF note is plain text, so Markdown has to flatten legibly.
+func testMarkdownPlainText() {
+    let plain = AnchoraMarkdown.plainText(from: """
+    ## Findings
+    The **key** result is `n = 12`.
+
+    - first
+    - second
+    > quoted
+    """)
+    expect(plain.contains("**") == false, "bold markers are gone from a pinned note")
+    expect(plain.contains("`") == false, "backticks are gone from a pinned note")
+    expect(plain.contains("##") == false, "heading markers are gone from a pinned note")
+    expect(plain.contains("• first"), "bullets become readable markers")
+    expect(plain.contains("The key result is n = 12."), "inline formatting flattens to its text")
+    expect(plain.contains("“quoted”"), "a quote becomes quotation marks")
+}
+
+/// The formatting rules exist because the renderer cannot honour everything.
+func testFormattingInstructionsMatchTheRenderer() {
+    let instructions = AnchoraPrompts.systemInstructions(profile: .study, language: .english, webVerification: false)
+    expect(instructions.contains("Markdown"), "answers are asked for in Markdown")
+    expect(instructions.lowercased().contains("never use a markdown table"),
+           "tables are ruled out, because the renderer has no table block")
+    expect(instructions.contains("[PDF p. X]"), "the citation format is pinned so it stays literal")
+}
+
 // MARK: - Run
 
 // A multi-file swiftc invocation has no main.swift, so the entry point is
@@ -288,6 +400,13 @@ enum AnchoraCoreTests {
         testChatSurvivesClearMidStream()
         testChatHintDeduplication()
         testChatSenderNames()
+        testMarkdownBlockKinds()
+        testMarkdownNestedList()
+        testMarkdownHandlesPartialStreamedText()
+        testMarkdownBlockIdentityIsStable()
+        testMarkdownPreservesCitations()
+        testMarkdownPlainText()
+        testFormattingInstructionsMatchTheRenderer()
 
         if failures == 0 {
             print("AnchoraCoreTests: \(checks) checks passed")

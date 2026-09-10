@@ -65,12 +65,22 @@ private struct AnchoraChatBubble: View {
                     .font(.system(size: 10.0, weight: .bold))
                     .foregroundStyle(senderColor)
 
-                Text(message.text)
-                    .font(.system(size: 13.5))
-                    .foregroundStyle(message.isPlaceholder ? bodyColor.opacity(0.7) : bodyColor)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                // Only model output is Markdown.  A user turn, a request-phase
+                // placeholder and the web-source list are strings we build
+                // ourselves, and running the source list through the parser
+                // would join its lines into one paragraph.
+                Group {
+                    if message.isPlaceholder || isUser || message.kind == .webSources {
+                        Text(message.text)
+                            .font(.system(size: 13.5))
+                            .foregroundStyle(message.isPlaceholder ? bodyColor.opacity(0.7) : bodyColor)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        AnchoraMarkdownText(markdown: message.text, foreground: bodyColor)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 if let label = message.sourceLabel, let pageIndex = message.sourcePageIndex {
                     Button {

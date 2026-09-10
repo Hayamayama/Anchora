@@ -42,6 +42,14 @@ public final class AnchoraPrompts: NSObject {
         explanation. Never invent a source or citation.
         """
 
+    /// Answers are rendered as Markdown in the sidebar.  The restrictions are
+    /// not stylistic: tables are not rendered as tables, a fenced whole answer
+    /// would render as one grey code block, and the citation format has to stay
+    /// literal so the Paper Map can still resolve it.
+    private static let formattingInstructions = """
+         Write every answer in Markdown, and keep the structure proportional to the answer: a reply of one or two         sentences is a single paragraph with no heading and no list. For anything longer, use "## " and "### " headings         for sections, "- " for unordered points, "1. " for ordered steps, **bold** for the few terms the reader should         carry away, `backticks` for identifiers, symbols, units, and gene or variable names, and "> " for a sentence         quoted verbatim from the PDF. Never wrap a whole answer in a code fence, and never use a Markdown table —         present tabular material as a list instead. Write the [PDF p. X] citation exactly in that form; it is literal         text, not a Markdown link.
+        """
+
     private static func languageInstruction(_ language: AnchoraResponseLanguage) -> String {
         switch language {
         case .traditionalChinese:
@@ -56,6 +64,7 @@ public final class AnchoraPrompts: NSObject {
                                                 language: AnchoraResponseLanguage,
                                                 webVerification: Bool) -> String {
         var instructions = (profile == .scientific) ? scientificInstructions : studyInstructions
+        instructions += formattingInstructions
         instructions += languageInstruction(language)
         if webVerification {
             instructions += webVerificationInstructions
