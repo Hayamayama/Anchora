@@ -511,6 +511,28 @@ Release 建置 0 錯誤。`SKPDFView.m` 有 23 個警告，全部是 Skim 既有
 
 版本 `1.4.2 (12)`；測試 173 個檢查。
 
+### 發布流程與散布方式
+
+想讓幾位同學也能安裝，先釐清 quarantine 實際上是怎麼運作的。
+
+**實測結果（macOS 26.6.2）：**
+
+- 剛解壓的 app 沒有 quarantine 屬性；`spctl` 判定為 `rejected`，因為 ad-hoc 簽章不是 Developer ID。
+- 手動加上 `com.apple.quarantine`（模擬瀏覽器下載）後，`spctl` 仍是 `rejected`。
+- 移除該屬性後，簽章依然有效。
+
+關鍵在於：**擋下 app 的是 quarantine 旗標，不是簽章本身。** ad-hoc 簽章的 app 只要沒有 quarantine 就能正常啟動。而 macOS 15 之後，「右鍵 → 打開」已經不再是繞過 quarantine 的途徑，使用者必須進「系統設定 → 隱私權與安全性」。
+
+本機沒有任何 codesigning 身分（`security find-identity` 回報 0 個），因此 Developer ID 這條路目前無法進行。
+
+**新增 `Tools/package-release.sh`。** 一個指令完成：跑測試與孤兒方法檢查 → Release 建置 → 清除延伸屬性 → **由內而外**簽章（巢狀的 Sparkle.framework、其中的 Updater.app、SkimNotes.framework、Spotlight importer 及其內部 framework）→ 打包 → 輸出版本與 SHA-256。
+
+設定 `ANCHORA_SIGN_IDENTITY` 與 `ANCHORA_NOTARY_PROFILE` 之後，同一個指令會改用 hardened runtime 與 secure timestamp 簽章、送交公證、staple 票證並重新打包。**這條路尚未實際跑過**，因為沒有憑證可用；README 已註明第一次公證很可能需要調整 entitlements，因為 bundle 內嵌了 Sparkle、Updater、SkimNotes 與 Spotlight importer，每一個都必須滿足 hardened runtime。
+
+改用由內而外簽章之後 zip 的內容有變，SHA-256 隨之更新為 `24656c0e…`。重新解壓驗簽並實際啟動確認無誤。
+
+**README 的安裝說明改寫**為兩條路徑：一行 Terminal 指令（下載、安裝、清除 quarantine），以及 Finder + 系統設定的手動流程。前者明確說明它清除的是什麼、以及為什麼只該對信任的來源這樣做。
+
 ---
 
 ## 目前可用功能
@@ -593,4 +615,4 @@ codesign --verify --deep --strict --verbose=2 Distribution/PDFBuddy.app
 - 以「主題 → 頁碼」呈現的 PDF 學習地圖。
 - Paper Map 段落內容的 Markdown 渲染（需與既有的 evidence／quote 範圍標示整合）。
 - Markdown 表格支援。
-- 使用 Developer ID 簽章與 notarization，支援正式對外散布。
+- 取得 Developer ID 憑證並實際跑通公證流程（腳本已就緒，尚未驗證）。

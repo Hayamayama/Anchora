@@ -6,10 +6,32 @@ It supports selected-text questions, OCR regions, image regions, page/PDF summar
 
 ## Install the app
 
-1. Open this repository's **Releases** page and download `Anchora-<version>-macos-arm64.zip`.
-2. Unzip it, then drag `Anchora.app` to `/Applications`.
-3. On the first launch, macOS may show an unidentified-developer warning because this build is locally signed, not notarized. Control-click `Anchora.app`, choose **Open**, then confirm once.
-4. Open a PDF, show the AI pane, click `•••` → **Set OpenAI API Key…**, and enter your own OpenAI Platform API key.
+Anchora is signed ad-hoc rather than with an Apple Developer ID, so macOS
+quarantines it when a browser downloads it. On macOS 15 and later,
+Control-clicking and choosing **Open** no longer gets past that.
+
+**The short way.** Paste this into Terminal, replacing the URL with the one
+from this repository's Releases page:
+
+```sh
+curl -L -o /tmp/Anchora.zip "PASTE_THE_RELEASE_URL_HERE" \
+  && ditto -x -k /tmp/Anchora.zip /Applications \
+  && xattr -dr com.apple.quarantine /Applications/Anchora.app \
+  && open /Applications/Anchora.app
+```
+
+That downloads it, installs it, and clears the quarantine flag macOS attaches
+to downloads. Clearing that flag is what skips the warning, so only run this
+for a build you actually trust — check the checksum below against the file if
+you want to be sure.
+
+**The Finder way.** Unzip, drag `Anchora.app` to `/Applications`, double-click
+it, and let macOS refuse. Then open **System Settings → Privacy & Security**,
+scroll to the message about Anchora, click **Open Anyway**, and confirm. macOS
+asks once per version.
+
+Then open a PDF, show the AI pane, click `•••` → **Set OpenAI API Key…**, and
+enter your own OpenAI Platform API key.
 
 The key is stored only in your macOS Keychain. It is never saved inside a PDF or committed to this repository.
 
@@ -48,13 +70,44 @@ The resulting app is at:
 
 ## Publish a GitHub Release
 
-After pushing the source changes, create a GitHub Release and attach the prepared `Anchora-<version>-macos-arm64.zip` asset from the local `Distribution` folder. The folder is intentionally ignored by Git so app bundles do not bloat the source repository.
+```sh
+Tools/package-release.sh
+```
+
+This runs the tests, builds Release, signs the bundle inside out, and writes
+`Distribution/Anchora-<version>-macos-arm64.zip` with its checksum. The
+`Distribution` folder is ignored by Git, so attach that file to the Release by
+hand (or with `gh release create`) rather than committing it.
+
+### Signing it properly
+
+With an Apple Developer Program membership the same command produces a build
+that opens with no warning and needs none of the install steps above:
+
+```sh
+xcrun notarytool store-credentials anchora \
+  --apple-id you@example.com --team-id TEAMID --password APP_SPECIFIC_PASSWORD
+
+ANCHORA_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+ANCHORA_NOTARY_PROFILE=anchora \
+  Tools/package-release.sh
+```
+
+The script then signs with the hardened runtime and a secure timestamp,
+submits the archive to Apple, staples the ticket to the app, and rebuilds the
+archive so the ticket travels with it.
+
+This path has not been exercised: no Developer ID certificate has been
+available on the machine Anchora is built on. Expect the first notarisation to
+report something to fix — the bundle embeds Sparkle, its Updater helper app,
+SkimNotes and a Spotlight importer, and every one of them has to satisfy the
+hardened runtime.
 
 Current release asset checksum:
 
 ```text
 Anchora-1.4.2-macos-arm64.zip
-SHA-256: 5a0a38b05aae5702f57052abf0ba2c4e2219deef7430d9e5fca4277302fccb58
+SHA-256: 24656c0efe624f095299d316b103ea52848605c85ac39a67edc63330885b4486
 ```
 
 ## Run the tests
