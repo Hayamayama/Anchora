@@ -14,6 +14,7 @@ swiftc -O -parse-as-library \
     "$root/Anchora/AnchoraPrompts.swift" \
     "$root/Anchora/AnchoraSettings.swift" \
     "$root/Anchora/AnchoraChatModel.swift" \
+    "$root/Anchora/AnchoraHeaderModel.swift" \
     "$root/Tools/AnchoraCoreTests.swift" \
     -o "$out/anchora-core-tests"
 "$out/anchora-core-tests"

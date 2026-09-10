@@ -784,7 +784,9 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     [menu addItem:dashboardItem];
     [menu addItem:[NSMenuItem separatorItem]];
     [menu addItemWithTitle:@"Set OpenAI API Key…" action:@selector(configureOpenAIAPIKey:) target:self];
-    [menu popUpMenuPositioningItem:nil atLocation:NSMakePoint(NSWidth([(NSView *)sender bounds]) - 36.0, NSHeight([(NSView *)sender bounds]) - 24.0) inView:sender];
+    NSView *view = (NSView *)sender;
+    NSPoint location = [self.aiHeaderModel moreActionsMenuLocationInViewBounds:[view bounds] isFlipped:[view isFlipped]];
+    [menu popUpMenuPositioningItem:nil atLocation:location inView:view];
 }
 
 - (void)recordAIConversationRole:(NSString *)role text:(NSString *)text {

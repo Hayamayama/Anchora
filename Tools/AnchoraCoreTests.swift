@@ -461,6 +461,36 @@ func testMessagesWithNothingToPin() {
     expect(model.messages[1].turn == nil, "a message that was not an answer has nothing to pin")
 }
 
+// MARK: - Header menu placement
+
+/// SwiftUI reports frames from the top left. NSHostingView is flipped so that
+/// matches directly, but an unflipped host needs the axis inverted -- getting
+/// that backwards dropped the ••• menu below the CONTEXT card instead of below
+/// the button.
+func testMoreActionsMenuLocation() {
+    let bounds = CGRect(x: 0, y: 0, width: 680, height: 146)
+    let model = AnchoraHeaderModel()
+
+    expectEqual(model.moreActionsMenuLocation(inViewBounds: bounds, isFlipped: true),
+                CGPoint(x: 644, y: 0),
+                "with nothing reported yet it falls back to the top right of a flipped view")
+    expectEqual(model.moreActionsMenuLocation(inViewBounds: bounds, isFlipped: false),
+                CGPoint(x: 644, y: 146),
+                "and to the top right of an unflipped one, which is a different y")
+
+    model.setMoreActionsAnchor(CGRect(x: 640, y: 0, width: 36, height: 20))
+    expectEqual(model.moreActionsMenuLocation(inViewBounds: bounds, isFlipped: true),
+                CGPoint(x: 640, y: 24),
+                "a flipped host takes SwiftUI's frame directly, so the menu drops just below the button")
+    expectEqual(model.moreActionsMenuLocation(inViewBounds: bounds, isFlipped: false),
+                CGPoint(x: 640, y: 122),
+                "an unflipped host measures the same point up from the bottom")
+
+    let flipped = model.moreActionsMenuLocation(inViewBounds: bounds, isFlipped: true)
+    expect(flipped.y < bounds.height * 0.5 && flipped.x > bounds.width * 0.5,
+           "the menu lands in the top-right quadrant, where the button is")
+}
+
 // MARK: - Capture geometry
 
 /// Two things have to be undone before a page rectangle matches what drawing
@@ -612,6 +642,7 @@ enum AnchoraCoreTests {
         testChatSenderNames()
         testAnswersKeepTheirOwnTurn()
         testMessagesWithNothingToPin()
+        testMoreActionsMenuLocation()
         testMarkdownBlockKinds()
         testMarkdownNestedList()
         testMarkdownHandlesPartialStreamedText()

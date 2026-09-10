@@ -482,6 +482,21 @@ Paper Map 的段落內容維持既有的 evidence 標示與 Source quote 連結�
 
 Release 建置 0 錯誤。`SKPDFView.m` 有 23 個警告，全部是 Skim 既有的（廢棄 API、可用性、縮排），沒有一個落在本次新增的 2818–2854 行。
 
+### 1.4.1 — `•••` 選單彈錯位置
+
+使用者回報選單出現在 CONTEXT 卡片下方，而不是按鈕下方。
+
+**兩個疊在一起的錯誤。**
+
+1. **座標系翻轉。** `NSHostingView.isFlipped` 是 `true`（y 由上往下），一般 `NSView` 則是 `false`。我用 `NSHeight(bounds) - 24` 當作「靠近頂端」，在翻轉的視圖裡那是靠近底端。
+2. **`PreferenceKey.reduce` 寫錯。** 改用 SwiftUI 回報按鈕實際位置之後仍然拿不到值：`value = nextValue()` 會讓後面的兄弟節點（CONTEXT 卡片）用預設值把按鈕回報的 frame 蓋掉。harness 印出 `GEOM (640, 0, 36, 20)` 但 `PREF (0, 0, 0, 0)`，兩行就定位了問題。`reduce` 改成只在非預設值時覆寫。
+
+**修正後**：SwiftUI 透過 preference 回報 `•••` 的實際 frame，選單位置的換算移到 `AnchoraHeaderModel.moreActionsMenuLocation(inViewBounds:isFlipped:)` —— 從 Objective-C 的呼叫端搬進 Swift，因為那是一段有兩種座標系的幾何計算，應該被測試而不是被猜。
+
+五個新測試涵蓋：翻轉與未翻轉的 fallback 角落、翻轉與未翻轉的按鈕下方位置（同一個點在兩種座標系下 y 不同），以及結果確實落在按鈕所在的右上象限。
+
+版本 `1.4.1 (11)`；測試 149 個檢查。
+
 ---
 
 ## 目前可用功能
@@ -553,8 +568,8 @@ codesign --verify --deep --strict --verbose=2 Distribution/PDFBuddy.app
 ## 發行位置
 
 - Release app：`Distribution/Anchora.app`
-- Release 附件：`Distribution/Anchora-1.4.0-macos-arm64.zip`（8.6 MB）
-- 版本：`1.4.0 (10)`
+- Release 附件：`Distribution/Anchora-1.4.1-macos-arm64.zip`（8.6 MB）
+- 版本：`1.4.1 (11)`
 - 最低系統：macOS 14.0
 - 大小：約 17 MB
 - Bundle ID：`com.kris.anchora`
