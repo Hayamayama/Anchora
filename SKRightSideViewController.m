@@ -189,10 +189,6 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     return labels;
 }
 
-- (NSArray<NSNumber *> *)paperMapPageIndexesForText:(NSString *)text {
-    return [AnchoraPaperMap pageIndexesInText:text ?: @"" pageLabels:[self pdfPageLabels]];
-}
-
 - (PDFSelection *)paperMapSelectionForQuote:(NSString *)quote onPage:(PDFPage *)page {
     NSString *pageText = [page string];
     if ([quote length] == 0 || [pageText length] == 0)
@@ -266,10 +262,6 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
         updateStatus();
     else
         dispatch_async(dispatch_get_main_queue(), updateStatus);
-}
-
-- (void)replaceStreamingPlaceholderWithText:(NSString *)text {
-    [self.aiChatModel replaceStreamingMessageWith:text ?: @""];
 }
 
 - (void)cancelCurrentAIRequest {
@@ -565,6 +557,24 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     SKPDFView *pdfView = [mainController pdfView];
     if (pdfView == nil || self.aiContextTextView == nil)
         return;
+
+    // Option-drag and Command-Option-drag each post their own notification
+    // when the drag finishes, and are handled by their own capture path.
+    NSString *notificationName = [notification name];
+    if ([notificationName isEqualToString:SKPDFViewAISelectionAreaChangedNotification]) {
+        [self captureAISelectionArea];
+        return;
+    }
+    if ([notificationName isEqualToString:SKPDFViewAIImageSelectionAreaChangedNotification]) {
+        [self captureAIImageSelectionArea];
+        return;
+    }
+    // A rectangle drag also posts the ordinary selection notification on every
+    // mouse-move while it tracks.  Waiting for its own final notification stops
+    // those from clearing the previous context once per event.
+    if (NSIsEmptyRect([pdfView currentSelectionRect]) == NO && [[pdfView currentSelection] hasCharacters] == NO)
+        return;
+
     PDFSelection *selection = [pdfView currentSelection];
     if ([selection hasCharacters] == NO) {
         [self applySelection:[AnchoraSelection emptyWithMessage:[AnchoraPrompts emptyContextMessageWithProfile:[[AnchoraSettings sharedSettings] readingProfile]]
@@ -857,18 +867,6 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     [self.aiConversation addObject:@{ @"role": role, @"text": text }];
     while ([self.aiConversation count] > 12)
         [self.aiConversation removeObjectAtIndex:0];
-}
-
-- (NSArray *)conversationInputItems {
-    NSMutableArray *items = [NSMutableArray array];
-    for (NSDictionary<NSString *, NSString *> *message in self.aiConversation) {
-        BOOL isAssistant = [message[@"role"] isEqualToString:@"assistant"];
-        [items addObject:@{
-            @"role": message[@"role"],
-            @"content": @[@{ @"type": isAssistant ? @"output_text" : @"input_text", @"text": message[@"text"] }]
-        }];
-    }
-    return items;
 }
 
 - (NSArray<NSNumber *> *)sourcePageIndexesForSelection:(PDFSelection *)selection fallbackPage:(PDFPage *)fallbackPage {

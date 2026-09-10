@@ -397,6 +397,17 @@ Paper Map 的段落內容維持既有的 evidence 標示與 Source quote 連結�
 - 修正三個既有 bug：Paper map 的 Limitations 段落從未被切出、Hide 之後無法叫回 Paper Map、以及新串流 client 的 data race。
 - 最低系統版本 macOS 14.0；Apple Silicon。
 
+### 1.3.1 — 修正 Option／Command-Option 拖曳完全失效
+
+使用者回報 `Command + Option + 拖曳` 之後圖像沒有被載入對話。
+
+- **根因是本次重構的 regression。** 在把 turn state 收成 value type 那一輪重寫 `updateSelectionContext:` 時，方法開頭的通知分派整段被刪掉了。`SKPDFViewAISelectionAreaChangedNotification` 與 `SKPDFViewAIImageSelectionAreaChangedNotification` 的 observer 一直都有註冊，但收到之後沒有被導向 `captureAISelectionArea` 與 `captureAIImageSelectionArea`，所以兩個方法都變成沒有任何呼叫端。
+- 因此壞掉的**不只圖像擷取**：`Option + 拖曳` 的區域 OCR 同樣完全失效，只是比較不容易被注意到。
+- 一併還原被刪掉的守衛：矩形拖曳在追蹤期間也會送出一般的選取通知，必須等它自己的最終通知，否則每一次滑鼠移動都會清掉前一次的 context。
+- 加上「定義了卻沒有任何呼叫端」的結構檢查，這正是能抓到這類遺漏的方式。該檢查另外找出三個因為搬到 Swift 而成為孤兒的方法（`conversationInputItems`、`paperMapPageIndexesForText`、`replaceStreamingPlaceholderWithText:`），已移除。`handleSnapshotViewFrameChanged` 同樣沒有呼叫端，但它在 1.1.0 之前就是如此，屬於 upstream Skim 的遺留，未動。
+
+`SKRightSideViewController.m` 為 1,251 行。版本 `1.3.1 (6)`。
+
 ---
 
 ## 目前可用功能
@@ -468,8 +479,8 @@ codesign --verify --deep --strict --verbose=2 Distribution/PDFBuddy.app
 ## 發行位置
 
 - Release app：`Distribution/Anchora.app`
-- Release 附件：`Distribution/Anchora-1.3.0-macos-arm64.zip`（8.6 MB）
-- 版本：`1.3.0 (5)`
+- Release 附件：`Distribution/Anchora-1.3.1-macos-arm64.zip`（8.6 MB）
+- 版本：`1.3.1 (6)`
 - 最低系統：macOS 14.0
 - 大小：約 17 MB
 - Bundle ID：`com.kris.anchora`
