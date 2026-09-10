@@ -22,6 +22,20 @@ public final class AnchoraCapture: NSObject {
     /// line otherwise clips its ascenders and descenders.
     private static let regionBleed: CGFloat = 3.0
 
+    /// Vision recognises only English unless it is told otherwise, so a
+    /// Traditional Chinese slide came back with nothing at all.  Traditional
+    /// Chinese leads because that is what these decks are written in; English
+    /// stays in the list because their technical terms are not translated.
+    private static let preferredLanguages = ["zh-Hant", "zh-Hans", "en-US"]
+
+    /// Resolved once against what this machine actually supports.
+    private static let recognitionLanguages: [String] = {
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        let supported = (try? request.supportedRecognitionLanguages()) ?? []
+        return AnchoraTextQuality.resolveRecognitionLanguages(preferred: preferredLanguages, supported: supported)
+    }()
+
     // MARK: - Rendering
 
     private static func render(page: PDFPage, box: PDFDisplayBox, rect: NSRect, scale requestedScale: CGFloat) -> NSBitmapImageRep? {
@@ -98,6 +112,7 @@ public final class AnchoraCapture: NSObject {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = true
+        request.recognitionLanguages = recognitionLanguages
 
         let handler = VNImageRequestHandler(cgImage: image, options: [:])
         guard (try? handler.perform([request])) != nil else { return nil }

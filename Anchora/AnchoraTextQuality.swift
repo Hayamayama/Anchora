@@ -27,4 +27,17 @@ public final class AnchoraTextQuality: NSObject {
         // it left nothing usable at all.
         return removed * 3 >= rawText.count || cleanedText.isEmpty
     }
+
+    /// Vision recognises English and nothing else unless it is given a language
+    /// list, which is why a Traditional Chinese slide came back empty.  The
+    /// preferred list is filtered against what the machine actually supports so
+    /// an unavailable language degrades to the rest rather than failing the
+    /// whole request.
+    public static func resolveRecognitionLanguages(preferred: [String],
+                                                   supported: [String]) -> [String] {
+        let fallback = ["en-US"]
+        guard supported.isEmpty == false else { return fallback }
+        let available = preferred.filter { supported.contains($0) }
+        return available.isEmpty ? fallback : available
+    }
 }

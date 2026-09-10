@@ -403,6 +403,26 @@ func testTextQualityHeuristic() {
            "cleaning down to nothing means recognition, however few aliens there were")
 }
 
+/// A Traditional Chinese slide recognised as nothing at all is what this list
+/// exists to prevent.
+func testRecognitionLanguageResolution() {
+    let supported = ["en-US", "fr-FR", "zh-Hans", "zh-Hant", "ja-JP"]
+    expectEqual(AnchoraTextQuality.resolveRecognitionLanguages(preferred: ["zh-Hant", "zh-Hans", "en-US"],
+                                                              supported: supported),
+                ["zh-Hant", "zh-Hans", "en-US"],
+                "supported languages are kept in preference order")
+    expectEqual(AnchoraTextQuality.resolveRecognitionLanguages(preferred: ["zh-Hant", "ko-KR", "en-US"],
+                                                              supported: supported),
+                ["zh-Hant", "en-US"],
+                "an unsupported language is dropped, not fatal")
+    expectEqual(AnchoraTextQuality.resolveRecognitionLanguages(preferred: ["ko-KR"], supported: supported),
+                ["en-US"],
+                "no preferred language available falls back rather than sending an empty list")
+    expectEqual(AnchoraTextQuality.resolveRecognitionLanguages(preferred: ["zh-Hant"], supported: []),
+                ["en-US"],
+                "a machine that reports nothing falls back too")
+}
+
 // MARK: - Selection and turn
 
 func testSelectionGenerationAdvances() {
@@ -499,6 +519,7 @@ enum AnchoraCoreTests {
         testMarkdownPlainText()
         testFormattingInstructionsMatchTheRenderer()
         testTextQualityHeuristic()
+        testRecognitionLanguageResolution()
         testSelectionGenerationAdvances()
         testFinishingRecognitionKeepsItsGeneration()
         testFinishingRecognitionWithNothing()

@@ -23,7 +23,7 @@ The key is stored only in your macOS Keychain. It is never saved inside a PDF or
 ## Use it
 
 - Select text and ask a question in the AI pane.
-- `Option` + drag: OCR a PDF area.
+- `Option` + drag: OCR a PDF area. Recognition covers Traditional Chinese, Simplified Chinese and English.
 - `Command` + `Option` + drag: send an image region.
 - `Web verify`: search and check current claims, then show the web sources used.
 - `Pin latest answer`: add the latest AI answer as an editable anchor note in the PDF.
@@ -52,8 +52,8 @@ After pushing the source changes, create a GitHub Release and attach the prepare
 Current release asset checksum:
 
 ```text
-Anchora-1.3.1-macos-arm64.zip
-SHA-256: 367937bef9ce72e60597fbc518267b3cb3cc7f0205f1f68dcd524531f650ee21
+Anchora-1.3.2-macos-arm64.zip
+SHA-256: eb8e580b5c58be55ed78e92725fe298010c5de3b36e5940d18d122202432b93a
 ```
 
 ## Run the tests

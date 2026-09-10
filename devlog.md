@@ -408,6 +408,22 @@ Paper Map 的段落內容維持既有的 evidence 標示與 Source quote 連結�
 
 `SKRightSideViewController.m` 為 1,251 行。版本 `1.3.1 (6)`。
 
+### 1.3.2 — OCR 認不出中文
+
+使用者回報 OCR 對中文完全無效，英文也像只抓到片段。
+
+- **根因：`VNRecognizeTextRequest` 沒有設定 `recognitionLanguages`，預設只認英文。** 這是既有問題（1.1.0 的 Objective-C 版本同樣沒設，移植時原樣保留了），不是本次重構造成的。
+- 以離線測試證實：對一段中文區域，修正前 Vision 回傳 `nil`（完全沒有結果），設定 `["zh-Hant", "zh-Hans", "en-US"]` 之後正確辨識，英文區域不受影響。這台機器的 accurate 模式支援 30 種語言，含 `zh-Hant` 與 `zh-Hans`。
+- 語言清單會與 `supportedRecognitionLanguages()` 取交集後才送出，因此不支援的語言只會被略過而不會讓整個請求失敗；清單為空時退回 `en-US`。這段解析邏輯抽成 `AnchoraTextQuality.resolveRecognitionLanguages`，可獨立測試。
+
+**一併查證但未修改的兩項：**
+
+- **區域擷取是正確的。** 建了一份四個象限各有已知文字的 PDF，對右上象限做區域擷取，渲染尺寸與請求完全相符，辨識結果只有該象限的文字。截圖中出現框外文字是前一次較大範圍拖曳留下的 CONTEXT，不是擷取錯誤。
+- **CONTEXT 卡片會正常換行。** 以 app 真實的 Auto Layout 條件重現（zero-frame `NSTextView`、卡片高度 86pt），文字在 302pt 內排成四行，沒有溢出。截圖中只有一行是因為 Vision 當時真的只認出那麼多。
+- **渲染倍率維持 2x。** 用 9pt 小字測 1x／2x／3x／4x：1x 平均信心 0.60 且有錯字，2x 為 0.83 且文字全對，3x 與 4x 沒有任何改善。提高倍率只會增加成本。
+
+版本 `1.3.2 (7)`；測試 128 個檢查。
+
 ---
 
 ## 目前可用功能
@@ -479,8 +495,8 @@ codesign --verify --deep --strict --verbose=2 Distribution/PDFBuddy.app
 ## 發行位置
 
 - Release app：`Distribution/Anchora.app`
-- Release 附件：`Distribution/Anchora-1.3.1-macos-arm64.zip`（8.6 MB）
-- 版本：`1.3.1 (6)`
+- Release 附件：`Distribution/Anchora-1.3.2-macos-arm64.zip`（8.6 MB）
+- 版本：`1.3.2 (7)`
 - 最低系統：macOS 14.0
 - 大小：約 17 MB
 - Bundle ID：`com.kris.anchora`
