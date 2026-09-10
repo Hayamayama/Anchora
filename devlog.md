@@ -155,6 +155,83 @@
 
 ---
 
+## 2026-09-09
+
+### 09:00–10:30 — Scientific Reading profile
+
+- 將原本偏講義閱讀的 Anchora AI 擴充為可切換的兩種閱讀 profile：
+  - `Study`：用於投影片、講義、一般 PDF 的解釋、翻譯與臨床連結。
+  - `Scientific`：用於研究論文的證據導向閱讀。
+- Scientific profile 的快捷動作改為：`Paper`、`Question`、`Hypothesis`、`Methods`、`Figure`、`Evidence`。
+- 這些動作不再一律依賴反白選取：
+  - 沒有選取時，`Paper`、`Question`、`Hypothesis`、`Methods`、`Evidence` 會使用整份 PDF。
+  - `Figure` 沒有選取時，會分析目前頁面的完整渲染圖；有選取時，則分析被框選的圖像區域。
+  - 有文字選取時，除了 `Paper` 外會優先針對該段做精讀，保留快速局部問答的工作流。
+- 新增完整 PDF 的 Paper map：要求模型依序重建研究問題與 knowledge gap、研究目標、主要假設／問題、研究與實驗方法、關鍵圖表與證據、直接證明了什麼、作者詮釋、限制與未解問題。
+- Scientific system prompt 明確要求把「直接結果、作者詮釋、合理推論、尚未證明」分開；圖表回答必須處理 x/y 軸、單位、組別／控制、統計或不確定性、趨勢、可支持的結論與限制。
+- Scientific 完整 PDF 請求的輸出上限提高到 16,000 tokens；一般回覆維持 8,000 tokens，避免短答案把論文架構截斷。
+
+### 10:30–11:10 — 語言設定與 AI 請求可見性
+
+- 把原先 Study mode 中分開的英文解釋與中文解釋按鈕整合為單一全域回覆語言設定。
+- 右上 `•••` 選單加入 `Response language` 子選單，可選 `繁體中文` 或 `English`；設定以 `NSUserDefaults` 保存，切換 Study／Scientific 或重新開啟 app 都會沿用。
+- 快捷按鈕依當前語言產生回答；`Translate` 則翻到目前設定的語言，若來源本來就是該語言，改為清楚的同語言改寫。
+- 請求開始時新增明確的階段訊息：`Preparing…`、`Preparing the complete PDF…`、`Uploading PDF to Anchora…`、`Anchora is reading…`，讓完整 PDF 上傳或模型分析期間不再像無回應。
+- Send 按鈕在請求期間改成 `Stop`；停止會取消 URL session task、保留已收到的文字，並在聊天中留下已停止提示。
+
+### 10:40–11:15 — 開檔記憶體暴增與 layout 迴圈修復
+
+- 觀察到某些 PDF 開啟時 Anchora 可吃到 25 GB 記憶體、CPU 長時間滿載，並造成彩虹圈與檔案無法開啟。
+- 根因為 AI 快捷按鈕列使用 `NSStackView` 的 arranged-subview/fitting-size 路徑，與側欄重建／Auto Layout 互相觸發，形成重複量測與配置迴圈。
+- 快捷列改為一般 `NSView`，按鈕以直接 constraints 排列，不再透過 `addArrangedSubview:` 或 `fittingSize` 參與遞迴量測。
+- 按鈕建立方式改為有明確 frame 的 `NSButton`，避免 AppKit 在載入視窗的過程中反覆詢問 intrinsic size。
+- 後續實測開檔後 Anchora 約 205 MB，峰值約 337 MB；這是含 PDFKit、側欄與完整頁面 render 的合理短暫峰值，並已不再呈現線性無限成長。
+
+### 11:15–12:00 — 回覆串流、完整 PDF 與 Pin 流程穩定化
+
+- 保留 Responses API SSE 串流，同時為 `response.completed` 加入最終 response 文字的 fallback，避免 delta event 遺失時已完成的回答沒有進入 UI。
+- 完整 PDF 上傳與分析改為可取消、可顯示進度的流程；對話輸入與快捷列在請求中維持一致的 enabled/disabled 狀態。
+- `Build Paper Map` 的完整回答可以直接 Pin 為標準 PDF anchor note；anchor title 使用當次問題，而不是一律的 `AI answer`。
+- 修正完整回答在 sidebar 尚未渲染、但已被 Pin 到 note 的競態問題：主執行緒上同步加入聊天訊息，並在串流結束後強制刷新聊天 layout。
+
+### 12:00–13:15 — Bubble 版面、來源跳轉與裁切修復
+
+- 聊天 bubble 的文字高度不再交給 `NSTextField` 在 `NSStackView` 中猜測；改依 bubble 可用寬度用 `boundingRect` 計算，再更新明確高度 constraint。
+- 側欄被拉寬或縮窄時，重新計算所有 assistant/user bubble 的可用寬度與文字高度，因此長回答會隨可用欄寬擴張，而不是固定在過窄的欄位。
+- 對 assistant 回覆加上專用的 source footer，並為 body 與 footer 建立獨立的 top、height、bottom constraints；避免 `PDF source` 疊在最後一行回答上，或被下一排快捷列裁掉。
+- 來源跳轉改為低視覺重量的 `↗ p. N` 文字連結，保留「點擊回到 PDF 頁面」的功能，但不把它做成厚重的按鈕。
+- 聊天區在每次文字更新、狀態更新與完成後重算 layout 並捲到最新訊息，改善「結果已取得但 bubble 空白／文字被切掉」的問題。
+
+### 13:17–13:25 — Anchora 1.1.0 Release
+
+- `CFBundleShortVersionString` 升為 `1.1.0`；`CFBundleVersion` 升為 build `2`。
+- Release 包含 Scientific profile、全域回覆語言、完整 PDF/Paper map、可取消與可見狀態的請求流程、記憶體配置迴圈修復，以及 sidebar bubble/source footer 的 layout 修復。
+- 13:24 命令列 Release build 成功，並在 13:25 封裝為 `Distribution/Anchora-1.1.0.app`（約 16 MB）；不開啟 Xcode GUI，避免干擾使用者自行檢查專案。
+
+### 23:30 — Paper Map navigator 與 Evidence chain（未重新封裝）
+
+- Scientific 的 `Paper` 動作現在要求固定的八個 Markdown H2 區段；回覆完成後會被解析為可選擇的 Paper Map 節點，而不是停留為一大段 chat 文字。
+- 每個節點可在固定高度、內部可捲動的閱讀卡中展開；右側的 `Jump to supporting PDF page…` 可跳回該節列出的 PDF citation 頁面。
+- Map 中會以較高辨識度標示 `Direct evidence`、`Author interpretation`、`Reasonable inference`、`Unproven / limitation`，將論文的證據鏈從作者主張與合理推論中分開。
+- 完整原文仍保留在對話記憶與 `Pin latest answer`，但 chat bubble 會收斂為「Paper Map ready」狀態，避免它再次撐滿整個 sidebar。
+- 隨後改為完全移除該次 Paper Map 的串流 assistant bubble，只保留 Paper Map navigator；原回答仍保存在本機對話記憶與 Pin 流程中。
+- Paper Map 現在要求每個 `Direct evidence` 附上一句 8–28 words 的 `Source quote`。該引文在 Map 內是可點擊連結：會跳至 citation 對應頁，並在 PDF text layer 可匹配時選取／反白原句；若文字層不一致，安全退回到該頁而不製造假反白。
+- 針對過去的 sidebar layout 問題，Map 不放入 chat 的 `NSStackView`；隱藏時採嚴格零高度、顯示時則允許在極矮側欄中讓位給 composer，避免 constraint fight。
+- Scientific 的 `Evidence` 按鈕保留短標籤以適應窄側欄；tooltip 說明它會要求四層 evidence chain。這兩項功能等待下一次成功 Debug／Release build 才會封裝。
+
+### 22:35 — 可保存的 AI 模型選擇器（未重新封裝）
+
+- 在 `•••` 更多選單加入 `AI model (目前模型)` 子選單；目前提供經過 Anchora 的 Responses／視覺輸入工作流篩選的選擇：
+  - `gpt-5.6-luna`：日常 Study 問答，成本優先。
+  - `gpt-5.6-terra`：品質與成本的推薦平衡點，適合作為 Scientific 預設。
+  - `gpt-5.6-sol`：完整 Paper map、重要論文與深度證據拆解。
+  - `gpt-5-mini`：保留為舊的極省成本選項，亦是沒有儲存設定時的安全預設。
+- 選擇保存於 `NSUserDefaults` 的 `Anchora.AIModel`。下一次請求才會採用新模型，避免影響正在串流的回覆。
+- 若舊設定不存在或模型不在受控清單，會安全回退到 `gpt-5-mini`。
+- 2026-09-09 22:35 已完成 Debug command-line build；此項功能尚未重新封裝進前一份 `1.1.0` Release app，待下一次 Release build 一併發行。
+
+---
+
 ## 目前可用功能
 
 ### PDF 與筆記
@@ -162,17 +239,19 @@
 - Text Tool、Highlight、Text Note、Box Note 快速工具列。
 - Text Note 為頁面上可直接看見、可拖曳與可編輯的便利貼。
 - AI anchor note 可保存、重開、拖動與刪除。
-- 用其他 PDF app 開啟時仍保留標準 PDF annotation；在 PDFBuddy／Skim 中可繼續編輯。
+- 用其他 PDF app 開啟時仍保留標準 PDF annotation；在 Anchora／Skim 中可繼續編輯。
 
 ### AI 對話
 
 - 選取文字後提問。
 - OCR 區域與圖片區域輸入。
-- 英文解釋、中文解釋、翻譯、臨床意義快捷提問。
+- `Study`／`Scientific` 閱讀 profile；Study 提供 Explain、Translate、Clinical，Scientific 提供 Paper、Question、Hypothesis、Methods、Figure、Evidence。
+- 全域繁體中文／English 回覆語言設定。
 - 可選擇的 Web verify 網路查證模式；回答後列出實際使用的網路來源。
 - 本機短期對話記憶與 Clear chat。
 - Pin 最新 AI 回覆回 PDF。
 - 頁面影像摘要與整份 PDF 摘要。
+- 完整論文 PDF 的 Paper map、圖表／軸線解釋與證據／限制拆解。
 
 ### 操作捷徑
 
@@ -195,6 +274,9 @@
 | 對話記憶 | 本機最近 12 則訊息 | 有追問能力，同時避免無限制累積上下文。 |
 | AI PDF 筆記 | 標準 PDF anchor annotation | 讓筆記可隨 PDF 保存，並盡量與其他 PDF app 相容。 |
 | PDF 摘要 | Page image / original PDF file | 避免文字層不可靠或遺漏視覺教材。 |
+| 論文閱讀 | Scientific profile + whole-PDF input | 讓高層問題、方法、圖表、證據與限制可從整篇論文重建，而非只依一小段反白文字。 |
+| 回覆渲染 | 明確 bubble 文字高度與來源 footer constraints | 避免 AppKit 的 intrinsic-size 推算造成空白、截斷或 source link 重疊。 |
+| 穩定性 | 不使用 `NSStackView` arranged-subview/fitting-size 建立快捷列 | 避免 PDF 開檔時的 layout 量測迴圈與不受控記憶體成長。 |
 | 發行 | Release + ad-hoc signing | 可直接在本機拖入 Applications；尚未公證，未適合公開散布。 |
 
 ---
@@ -218,8 +300,8 @@ codesign --verify --deep --strict --verbose=2 Distribution/PDFBuddy.app
 
 ## 發行位置
 
-- Release app：`Distribution/Anchora.app`
-- 版本：`1.0.0 (1)`
+- Release app：`Distribution/Anchora-1.1.0.app`
+- 版本：`1.1.0 (2)`
 - 大小：約 17 MB
 - Bundle ID：`com.kris.anchora`
 
