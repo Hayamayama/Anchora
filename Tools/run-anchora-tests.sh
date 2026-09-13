@@ -14,6 +14,9 @@ swiftc -O -parse-as-library \
     "$root/Anchora/AnchoraTurn.swift" \
     "$root/Anchora/AnchoraCapture.swift" \
     "$root/Anchora/AnchoraPrompts.swift" \
+    "$root/Anchora/AnchoraStore.swift" \
+    "$root/Anchora/AnchoraInboxModel.swift" \
+    "$root/Anchora/AnchoraPaneModel.swift" \
     "$root/Anchora/AnchoraSettings.swift" \
     "$root/Anchora/AnchoraChatModel.swift" \
     "$root/Anchora/AnchoraHeaderModel.swift" \

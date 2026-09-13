@@ -9,6 +9,36 @@
 
 import Foundation
 
+/// What a quick action does, independent of where it is offered.
+///
+/// Actions live in two places now -- the composer row and the ``•••``
+/// menu -- so dispatching on a row index would make a menu item's meaning
+/// depend on how many buttons the row happens to be showing.
+@objc public enum AnchoraQuickAction: Int {
+    case explain = 0
+    case recall = 1
+    case quiz = 2
+    case translate = 3
+    case clinical = 4
+    case studyMap = 5
+    case paperMap = 6
+    case researchQuestion = 7
+    case hypothesis = 8
+    case methods = 9
+    case figure = 10
+    case evidence = 11
+}
+
+/// What an action needs in front of it before it can be asked.
+@objc public enum AnchoraActionScope: Int {
+    /// What the reader has selected right now.
+    case selection = 0
+    /// The page the reader is on, sent as a rendered image.
+    case page = 1
+    /// The complete PDF.
+    case document = 2
+}
+
 @objc(AnchoraPrompts)
 public final class AnchoraPrompts: NSObject {
 
@@ -47,7 +77,12 @@ public final class AnchoraPrompts: NSObject {
     /// would render as one grey code block, and the citation format has to stay
     /// literal so the Paper Map can still resolve it.
     private static let formattingInstructions = """
-         Write every answer in Markdown, and keep the structure proportional to the answer: a reply of one or two         sentences is a single paragraph with no heading and no list. For anything longer, use "## " and "### " headings         for sections, "- " for unordered points, "1. " for ordered steps, **bold** for the few terms the reader should         carry away, `backticks` for identifiers, symbols, units, and gene or variable names, and "> " for a sentence         quoted verbatim from the PDF. Never wrap a whole answer in a code fence, and never use a Markdown table —         present tabular material as a list instead. Write the [PDF p. X] citation exactly in that form; it is literal         text, not a Markdown link.
+         Write every answer in Markdown, and keep the structure proportional to the answer: a reply of one or two sentences \
+        is a single paragraph with no heading and no list. For anything longer, use "## " and "### " headings for sections, \
+        "- " for unordered points, "1. " for ordered steps, **bold** for the few terms the reader should carry away, \
+        `backticks` for identifiers, symbols, units, and gene or variable names, and "> " for a sentence quoted verbatim \
+        from the PDF. Never wrap a whole answer in a code fence, and never use a Markdown table — present tabular material \
+        as a list instead. Write the [PDF p. X] citation exactly in that form; it is literal text, not a Markdown link.
         """
 
     private static func languageInstruction(_ language: AnchoraResponseLanguage) -> String {
@@ -91,8 +126,8 @@ public final class AnchoraPrompts: NSObject {
             return "Scientific Reading is ready. Select paper text, use Command-Option-drag on a figure, or choose Build Paper Map "
                 + "(PDF) from •••. I will separate direct evidence, author interpretation, and what remains unproven."
         case .study:
-            return "Select text, Option-drag for OCR, or Command-Option-drag to send an image region. Your conversation stays here "
-                + "while the PDF remains in view."
+            return "Select text and ask, or Option-drag for OCR. When you have finished a page: write one sentence from memory "
+                + "and press Recall to see what you got wrong, or press Quiz to be asked about it."
         }
     }
 
@@ -150,29 +185,187 @@ public final class AnchoraPrompts: NSObject {
 
     // MARK: - Quick actions
 
-    @objc public static func quickActionTitles(profile: AnchoraReadingProfile) -> [String] {
+    /// The row is the reading loop: what a reader presses on nearly every
+    /// page.  Everything a document needs only once, and every occasional
+    /// lens, is one level down in ``•••`` instead -- a row of six buttons is
+    /// a row nobody reads.
+    private static func rowActions(profile: AnchoraReadingProfile) -> [AnchoraQuickAction] {
         switch profile {
         case .scientific:
-            return ["Paper", "Question", "Hypothesis", "Methods", "Figure", "Evidence"]
+            return [.methods, .figure, .evidence]
         case .study:
-            return ["Study map", "Explain", "Translate", "Clinical"]
+            return [.explain, .recall, .quiz]
         }
     }
 
-    @objc public static func quickActionTooltips(profile: AnchoraReadingProfile) -> [String] {
+    /// The profile's remaining actions, offered in the ``•••`` menu.  Paper
+    /// map is absent deliberately: ``•••`` already builds it as this
+    /// profile's whole-PDF summary, and listing it twice was the duplication
+    /// that pushed the row to six buttons in the first place.
+    @objc(overflowActionsWithProfile:)
+    public static func overflowActions(profile: AnchoraReadingProfile) -> [NSNumber] {
+        let actions: [AnchoraQuickAction]
         switch profile {
         case .scientific:
-            return ["Rebuild the paper's argument as a navigable map",
-                    "Research problem, gap, and the precise question",
-                    "The hypothesis, and what would support it",
-                    "Design, groups, controls, outcomes, and analysis",
-                    "Axes, units, controls, and what the figure can establish",
-                    "An evidence chain: direct result, author interpretation, inference, and what remains unproven"]
+            actions = [.researchQuestion, .hypothesis]
         case .study:
-            return ["Plan how to study this whole PDF: what order, what to focus on, what to skip",
-                    "Explain this step by step",
-                    "Translate into the configured response language",
-                    "Clinical relevance and practical implications"]
+            actions = [.studyMap, .translate, .clinical]
+        }
+        return actions.map { NSNumber(value: $0.rawValue) }
+    }
+
+    /// Which action the row's nth button performs.
+    @objc(rowActionWithProfile:index:)
+    public static func rowAction(profile: AnchoraReadingProfile, index: Int) -> AnchoraQuickAction {
+        let actions = rowActions(profile: profile)
+        return actions.indices.contains(index) ? actions[index] : .explain
+    }
+
+    @objc public static func quickActionTitles(profile: AnchoraReadingProfile) -> [String] {
+        rowActions(profile: profile).map(title(for:))
+    }
+
+    @objc public static func quickActionTooltips(profile: AnchoraReadingProfile) -> [String] {
+        rowActions(profile: profile).map(tooltip(for:))
+    }
+
+    /// The button label: short, because three of these share the row's width.
+    @objc(titleForAction:)
+    public static func title(for action: AnchoraQuickAction) -> String {
+        switch action {
+        case .explain: return "Explain"
+        case .recall: return "Recall"
+        case .quiz: return "Quiz"
+        case .translate: return "Translate"
+        case .clinical: return "Clinical"
+        case .studyMap: return "Study map"
+        case .paperMap: return "Paper"
+        case .researchQuestion: return "Question"
+        case .hypothesis: return "Hypothesis"
+        case .methods: return "Methods"
+        case .figure: return "Figure"
+        case .evidence: return "Evidence"
+        }
+    }
+
+    /// The ``•••`` entry, where there is room to say what the action is for.
+    @objc(menuTitleForAction:)
+    public static func menuTitle(for action: AnchoraQuickAction) -> String {
+        switch action {
+        case .explain: return "Explain This Selection"
+        case .recall: return "Check My Recall of This Page"
+        case .quiz: return "Quiz Me on This Page"
+        case .translate: return "Translate This Selection"
+        case .clinical: return "Clinical Relevance"
+        case .studyMap: return "Build a Study Map"
+        case .paperMap: return "Build Paper Map (PDF)"
+        case .researchQuestion: return "Research Question"
+        case .hypothesis: return "Main Hypothesis"
+        case .methods: return "Methods"
+        case .figure: return "Interpret This Figure"
+        case .evidence: return "Evidence Chain"
+        }
+    }
+
+    /// What the transcript shows as the question.  A reader scrolling back
+    /// should see what they asked, not the paragraph of instructions that
+    /// went with it.
+    @objc(displayTitleForAction:)
+    public static func displayTitle(for action: AnchoraQuickAction) -> String {
+        switch action {
+        case .explain: return "Explain this"
+        case .recall: return "Check my recall"
+        case .quiz: return "Quiz me on this page"
+        case .translate: return "Translate this"
+        case .clinical: return "Clinical relevance"
+        case .studyMap: return studyMapTitle
+        case .paperMap: return "Build Paper Map"
+        case .researchQuestion: return "Research Question"
+        case .hypothesis: return "Main Hypothesis"
+        case .methods: return "Methods"
+        case .figure: return "Figure"
+        case .evidence: return "Evidence Chain"
+        }
+    }
+
+    @objc(tooltipForAction:)
+    public static func tooltip(for action: AnchoraQuickAction) -> String {
+        switch action {
+        case .explain: return "Explain the selection step by step"
+        case .recall: return "Write one sentence from memory first; Anchora tells you what you got wrong and what you missed"
+        case .quiz: return "Two or three questions on this page, marked after you answer them"
+        case .translate: return "Translate into the configured response language"
+        case .clinical: return "Clinical relevance and practical implications"
+        case .studyMap: return "Plan how to study this whole PDF: what order, what to focus on, what to skip"
+        case .paperMap: return "Rebuild the paper's argument as a navigable map"
+        case .researchQuestion: return "Research problem, gap, and the precise question"
+        case .hypothesis: return "The hypothesis, and what would support it"
+        case .methods: return "Design, groups, controls, outcomes, and analysis"
+        case .figure: return "Axes, units, controls, and what the figure can establish"
+        case .evidence: return "An evidence chain: direct result, author interpretation, inference, and what remains unproven"
+        }
+    }
+
+    @objc(scopeForAction:)
+    public static func scope(for action: AnchoraQuickAction) -> AnchoraActionScope {
+        switch action {
+        case .recall, .quiz:
+            return .page
+        case .studyMap, .paperMap:
+            return .document
+        default:
+            return .selection
+        }
+    }
+
+    @objc(mapKindForAction:)
+    public static func mapKind(for action: AnchoraQuickAction) -> AnchoraMapKind {
+        switch action {
+        case .studyMap: return .study
+        case .paperMap: return .paper
+        default: return .none
+        }
+    }
+
+    /// The instructions sent for an action.  ``recall`` and ``quiz`` are
+    /// absent: they carry what the reader wrote, so they are built by
+    /// `recallPrompt(summary:)` and graded by `quizGradingPrompt(answers:)`.
+    @objc(promptForAction:)
+    public static func prompt(for action: AnchoraQuickAction) -> String {
+        switch action {
+        case .explain:
+            return "Explain this clearly, step by step, for study."
+        case .recall:
+            // Recall is built from what the reader wrote; there is no
+            // question to ask without it.
+            return ""
+        case .quiz:
+            return quizPrompt
+        case .translate:
+            return "Translate this into the configured response language. Preserve technical terms where helpful; if the source is "
+                + "already in that language, provide a clear language-native paraphrase instead."
+        case .clinical:
+            return "Explain the clinical relevance and practical implications of this."
+        case .studyMap:
+            return studyMapPrompt
+        case .paperMap:
+            return paperMapPrompt
+        case .researchQuestion:
+            return "What research problem is this paper studying? State the clinical/scientific gap, the authors' objective, and the "
+                + "precise research question. Distinguish explicit statements from your inference."
+        case .hypothesis:
+            return "Identify the main hypothesis or hypotheses. State the predicted relationship/effect, what result would support it, "
+                + "and whether the hypothesis is explicitly stated or inferred from the study design."
+        case .methods:
+            return "Explain the research methods and experimental methods: design, participants/samples, groups or controls, "
+                + "intervention/manipulation, measured outcomes, timing, and analysis. Flag missing details rather than inventing them."
+        case .figure:
+            return "Interpret this figure rigorously. Explain the x-axis and y-axis, units, groups/conditions, controls, "
+                + "symbols/error bars/statistical annotations, the observed pattern, the authors' claim, and what this figure alone can "
+                + "and cannot establish. If an axis or label is not legible, say so."
+        case .evidence:
+            return "What does this evidence demonstrate? Separate: direct result, authors' interpretation, what is a reasonable "
+                + "inference, and what remains unproven. Do not turn association into causation without an appropriate design."
         }
     }
 
@@ -180,56 +373,76 @@ public final class AnchoraPrompts: NSObject {
         (profile == .scientific) ? "Ask about this paper…" : "Ask about this selection…"
     }
 
-    /// The compact label shown in chat for a whole-document scientific action.
-    @objc public static func scientificQuickActionDisplayTitle(tag: Int) -> String {
-        switch tag {
-        case 0: return "Build Paper Map"
-        case 1: return "Research Question"
-        case 2: return "Main Hypothesis"
-        case 3: return "Methods"
-        case 4: return "Figure"
-        default: return "Evidence Chain"
-        }
+    // MARK: - Recall and quiz
+
+    /// Both of these exist for one reason: reading a page produces no signal
+    /// about whether it was understood.  They are the two cheapest ways to
+    /// generate one -- say it back, or be asked.
+
+    /// The reader writes from memory, then the model marks the difference.
+    /// Harder to fool than a quiz, because there is nothing to recognise.
+    @objc public static func recallPrompt(summary: String) -> String {
+        """
+        This is what I can recall of this page, written from memory before rereading it:
+
+        \(summary)
+
+        Report the difference between that and the page. Do not summarise the page. Use exactly these four parts:
+
+        1. **Right** -- what I had correct. Name it; do not explain it back to me.
+        2. **Wrong** -- every claim of mine this page contradicts, each with what the page actually says and its citation.
+        3. **Missed** -- only what matters for understanding this page, not everything else printed on it. If I missed \
+        nothing important, say so in one line.
+        4. **Fix first** -- one sentence naming the single thing to go back to.
+
+        Judge the idea, not the wording: a correct understanding in loose or informal phrasing is correct, and a fluent \
+        sentence that gets the mechanism backwards is not. Do not open with praise, and do not soften part 2 -- being told \
+        plainly where I am wrong is the entire point of this.
+        """
     }
 
-    @objc public static func scientificQuickActionPrompt(tag: Int) -> String {
-        switch tag {
-        case 0:
-            return paperMapPrompt
-        case 1:
-            return "What research problem is this paper studying? State the clinical/scientific gap, the authors' objective, and the "
-                + "precise research question. Distinguish explicit statements from your inference."
-        case 2:
-            return "Identify the main hypothesis or hypotheses. State the predicted relationship/effect, what result would support it, "
-                + "and whether the hypothesis is explicitly stated or inferred from the study design."
-        case 3:
-            return "Explain the research methods and experimental methods: design, participants/samples, groups or controls, "
-                + "intervention/manipulation, measured outcomes, timing, and analysis. Flag missing details rather than inventing them."
-        case 4:
-            return "Interpret this figure rigorously. Explain the x-axis and y-axis, units, groups/conditions, controls, "
-                + "symbols/error bars/statistical annotations, the observed pattern, the authors' claim, and what this figure alone can "
-                + "and cannot establish. If an axis or label is not legible, say so."
-        default:
-            return "What does this evidence demonstrate? Separate: direct result, authors' interpretation, what is a reasonable "
-                + "inference, and what remains unproven. Do not turn association into causation without an appropriate design."
-        }
+    @objc public static let recallNeedsSummaryMessage =
+        "Write what you remember of this page in the ask bar first — one or two sentences, without looking — then press Recall. "
+        + "The comparison is only worth anything if you write it from memory."
+
+    /// Questions only.  A page's own wording is the wrong thing to test: it
+    /// can be recognised without being understood, which is the failure this
+    /// feature exists to catch.
+    @objc public static let quizPrompt = """
+        Ask me two or three questions about this page, then stop. Do not answer them, do not hint at the answers, and do not \
+        summarise the page first. Output the numbered questions and nothing else before them.
+
+        Test whether I can use this material, not whether I can remember how it was worded. Prefer a question that makes me \
+        apply it to a concrete case, tell two similar things apart, predict what changes when a condition changes, or say why \
+        something is so. Never ask a question whose answer is a phrase that can be copied off the page, and never ask about \
+        wording, layout, or which slide something appeared on. Keep every question answerable from this page alone.
+
+        Number them 1., 2., 3., one sentence each. Then finish with a single line telling me to type my answers in the ask \
+        bar and send them for marking.
+        """
+
+    /// The reader's answers come back through the ask bar; the page is
+    /// attached again so the marking is checked against the material rather
+    /// than against the model's memory of its own questions.
+    @objc public static func quizGradingPrompt(answers: String) -> String {
+        """
+        These are my answers to the questions you just asked, in order:
+
+        \(answers)
+
+        Mark them against the attached page. Take each question in turn, and for each one: say what I got right, then state \
+        exactly what is wrong or missing rather than a softened version of it, then give the answer I should have given in \
+        one or two sentences with its citation. Where I answered correctly, say so in a single line and add nothing.
+
+        If I answered fewer questions than you asked, mark the ones I answered and give the answer to the rest. Finish with \
+        one line: the single thing to reread and its page, or that there is nothing to reread.
+        """
     }
 
-    /// Tag 0 is the whole-document study map; the rest act on the selection.
-    @objc public static let studyMapActionTag = 0
+    @objc public static let quizAnswerPlaceholder = "Type your answers here, then Send…"
 
-    @objc public static func studyQuickActionPrompt(tag: Int) -> String {
-        switch tag {
-        case 0:
-            return studyMapPrompt
-        case 2:
-            return "Translate this into the configured response language. Preserve technical terms where helpful; if the source is "
-                + "already in that language, provide a clear language-native paraphrase instead."
-        case 3:
-            return "Explain the clinical relevance and practical implications of this."
-        default:
-            return "Explain this clearly, step by step, for study."
-        }
+    @objc public static func quizDisplayTitle(pageNumber: Int) -> String {
+        "Quiz me on page \(pageNumber)"
     }
 
     // MARK: - Paper map
@@ -253,9 +466,12 @@ public final class AnchoraPrompts: NSObject {
     @objc public static let studyMapPrompt = """
         Design a study plan for this document: how to learn it efficiently and well. This is not a summary of the content.
 
-        First work out what kind of material this is -- lecture slides, a textbook chapter, a handout, a problem set -- and what         a reader is expected to be able to do once they have studied it.
+        First work out what kind of material this is -- lecture slides, a textbook chapter, a handout, a problem set -- and \
+        what a reader is expected to be able to do once they have studied it.
 
-        Then return between five and ten Markdown H2 sections, numbered, in the order they should be studied. Name each heading         for what is learned there rather than copying the slide titles. Under each heading write a Markdown bullet list, one bullet per line, of exactly these:
+        Then return between five and ten Markdown H2 sections, numbered, in the order they should be studied. Name each \
+        heading for what is learned there rather than copying the slide titles. Under each heading write a Markdown bullet \
+        list, one bullet per line, of exactly these:
 
         - Pages: the pages it covers, written as [PDF p. X] or [PDF p. X-Y], using only page labels that exist in this document
         - Goal: what the reader should be able to do after this block, phrased as an action
@@ -263,9 +479,12 @@ public final class AnchoraPrompts: NSObject {
         - How to study it: what to actually do with these pages -- read closely, skim, redraw the diagram, memorise, work examples
         - Trap: the mistake people usually make here, when there is an obvious one
 
-        Order the blocks by what depends on what, not by the order the pages happen to fall in, and say so when you deliberately         send the reader out of order.
+        Order the blocks by what depends on what, not by the order the pages happen to fall in, and say so when you \
+        deliberately send the reader out of order.
 
-        Finish with two more H2 sections: one giving the shortest useful path for a reader who is short of time, naming the pages         to read; and one listing questions the reader should be able to answer from memory afterwards, as a self-test.
+        Finish with two more H2 sections: one giving the shortest useful path for a reader who is short of time, naming the \
+        pages to read; and one listing questions the reader should be able to answer from memory afterwards, as a \
+        self-test.
 
         Cite pages for everything you say the document covers, and say it is not covered rather than inventing material.
         """

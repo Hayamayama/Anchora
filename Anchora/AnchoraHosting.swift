@@ -43,15 +43,27 @@ public final class AnchoraHosting: NSObject {
         hostingView(AnchoraChatView(model: model))
     }
 
+    /// The tab strip and whichever of the three faces is selected: the
+    /// transcript, the map, or the inbox.  One hosting view, so the sidebar
+    /// never has to compute how tall a map ought to be.
+    ///
     /// `pageLabels` is captured when the view is built; the host rebuilds the
-    /// root view through `updateMapView(_:model:pageLabels:)` when a new
-    /// document is opened.
-    @objc public static func mapView(model: AnchoraMapModel, pageLabels: [String]) -> NSView {
-        hostingView(AnchoraMapView(model: model, pageLabels: pageLabels))
+    /// root view through `updatePaneView(...)` when a new document is opened.
+    @objc public static func paneView(pane: AnchoraPaneModel,
+                                      chat: AnchoraChatModel,
+                                      map: AnchoraMapModel,
+                                      inbox: AnchoraInboxModel,
+                                      pageLabels: [String]) -> NSView {
+        hostingView(AnchoraPaneView(pane: pane, chat: chat, map: map, inbox: inbox, pageLabels: pageLabels))
     }
 
-    @objc public static func updateMapView(_ view: NSView, model: AnchoraMapModel, pageLabels: [String]) {
-        guard let hosting = view as? NSHostingView<AnchoraMapView> else { return }
-        hosting.rootView = AnchoraMapView(model: model, pageLabels: pageLabels)
+    @objc public static func updatePaneView(_ view: NSView,
+                                            pane: AnchoraPaneModel,
+                                            chat: AnchoraChatModel,
+                                            map: AnchoraMapModel,
+                                            inbox: AnchoraInboxModel,
+                                            pageLabels: [String]) {
+        guard let hosting = view as? NSHostingView<AnchoraPaneView> else { return }
+        hosting.rootView = AnchoraPaneView(pane: pane, chat: chat, map: map, inbox: inbox, pageLabels: pageLabels)
     }
 }

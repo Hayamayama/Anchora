@@ -74,9 +74,11 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
 // height, bubble growth, scrolling, link handling — belongs to the framework.
 @property (nonatomic, nullable, strong) AnchoraChatModel *aiChatModel;
 @property (nonatomic, nullable, strong) AnchoraMapModel *aiMapModel;
-@property (nonatomic, nullable, strong) NSView *aiChatView;
-@property (nonatomic, nullable, strong) NSView *aiMapCard;
-@property (nonatomic, nullable, strong) NSLayoutConstraint *aiMapHeightConstraint;
+@property (nonatomic, nullable, strong) AnchoraInboxModel *aiInboxModel;
+// Which of the sidebar's three faces is showing.  The transcript, the map and
+// the inbox take turns in one area rather than competing for it.
+@property (nonatomic, nullable, strong) AnchoraPaneModel *aiPaneModel;
+@property (nonatomic, nullable, strong) NSView *aiPaneView;
 // The reader's live selection, and the snapshot the in-flight answer was
 // asked about.  Keeping these as two values rather than sixteen parallel
 // properties is what stops the two from being confused.
@@ -93,6 +95,11 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
 // built.  A map is always a whole-document answer, so this never has to
 // survive longer than that one call.
 @property (nonatomic) AnchoraMapKind aiPendingMapKind;
+// Set while a quiz is waiting to be answered.  The page is held with it
+// because the reader can scroll away between the questions and the answers,
+// and the marking has to see the page the questions came from.
+@property (nonatomic) BOOL aiQuizPending;
+@property (nonatomic, nullable, strong) PDFPage *aiQuizPage;
 @end
 
 @implementation SKRightSideViewController
@@ -142,14 +149,36 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
     }
 }
 
-- (void)updateMapCardHeight {
-    CGFloat height = [self.aiMapModel preferredHeight];
-    [self.aiMapCard setHidden:height <= 0.0];
-    // A hidden map must be exactly zero-height: NSView.hidden does not remove
-    // Auto Layout constraints. The visible state lowers this priority so it
-    // yields gracefully in a very short sidebar.
-    self.aiMapHeightConstraint.priority = height > 0.0 ? NSLayoutPriorityDefaultHigh : NSLayoutPriorityRequired;
-    self.aiMapHeightConstraint.constant = height;
+/// Where the reader is, for a note that wants to record it.
+- (NSString *)currentDocumentTitle {
+    NSString *displayName = [(NSDocument *)[mainController document] displayName];
+    return [displayName length] ? displayName : @"";
+}
+
+- (NSInteger)currentPageNumber {
+    PDFPage *page = [[mainController pdfView] currentPage];
+    return page ? (NSInteger)[page pageIndex] + 1 : 0;
+}
+
+/// The key a saved map is filed under.  Empty for a document that has never
+/// been saved to disk, which is also the case where there is nothing stable to
+/// file it against.
+- (NSString *)currentDocumentPath {
+    NSURL *fileURL = [(NSDocument *)[mainController document] fileURL];
+    return [fileURL isFileURL] ? [fileURL path] : @"";
+}
+
+/// Whichever document sidebar the reader last worked in answers ⌘⇧J's
+/// question about where they are.
+- (void)claimQuickCaptureSource {
+    __weak SKRightSideViewController *weakSelf = self;
+    AnchoraQuickCapture *capture = [AnchoraQuickCapture shared];
+    [capture setSourceTitleProvider:^NSString *{
+        return [weakSelf currentDocumentTitle];
+    }];
+    [capture setSourcePageProvider:^NSInteger{
+        return [weakSelf currentPageNumber];
+    }];
 }
 
 - (NSArray<NSString *> *)pdfPageLabels {
@@ -188,14 +217,31 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
 
 - (void)clearPaperMap {
     [self.aiMapModel clear];
+    [self.aiPaneModel leaveTabIfShowing:AnchoraPaneTabMap];
 }
 
-- (void)presentMapFromResponse:(NSString *)response kind:(AnchoraMapKind)kind {
+/// A map costs a whole-PDF upload, so it is kept: reopening the document
+/// brings back the one that was built for it rather than asking for it again.
+- (void)restoreSavedMap {
+    NSString *path = [self currentDocumentPath];
+    AnchoraSavedMap *saved = [path length] ? [[AnchoraStore shared] latestMapWithDocumentPath:path] : nil;
+    if (saved == nil)
+        return;
+    [self presentMapFromResponse:[saved response] kind:(AnchoraMapKind)[saved kindRawValue] select:NO];
+}
+
+- (void)presentMapFromResponse:(NSString *)response kind:(AnchoraMapKind)kind select:(BOOL)select {
     NSArray<NSString *> *pageLabels = [self pdfPageLabels];
     NSArray<AnchoraMapSection *> *sections = kind == AnchoraMapKindStudy
         ? [AnchoraStudyMap sectionsFromResponse:response ?: @"" pageLabels:pageLabels]
         : [AnchoraPaperMap sectionsFromResponse:response ?: @"" pageLabels:pageLabels];
+    if ([sections count] == 0)
+        return;
     [self.aiMapModel present:sections kind:kind];
+    // A map the reader just asked for is what they want to look at.  One
+    // restored on open is not: it waits behind its tab.
+    if (select)
+        [self.aiPaneModel showMap];
 }
 
 - (void)appendChatMessageFrom:(NSString *)sender text:(NSString *)text sourcePageIndexes:(NSArray<NSNumber *> *)sourcePageIndexes {
@@ -286,6 +332,8 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
                                            title:scientific ? @"Anchora Scientific" : @"Anchora AI"
                                         subtitle:scientific ? @"Trace the evidence behind a paper" : @"Ask about what you are reading"
                                     contextTitle:scientific ? @"PAPER CONTEXT" : @"CONTEXT"];
+    self.aiQuizPending = NO;
+    self.aiQuizPage = nil;
     [self.aiComposerModel setPlaceholderText:[AnchoraPrompts composerPlaceholderWithProfile:profile]];
     [self.aiComposerModel setQuickActionTitles:[AnchoraPrompts quickActionTitlesWithProfile:profile]
                                       tooltips:[AnchoraPrompts quickActionTooltipsWithProfile:profile]];
@@ -325,35 +373,35 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
     self.aiTopConstraint = [header.topAnchor constraintEqualToAnchor:rootView.topAnchor constant:12.0];
     self.aiTopConstraint.active = YES;
 
-    // A paper map is a fixed-height navigator with its own scrollable detail
-    // area.  It deliberately does not sit inside the chat view: large
-    // scientific answers must never feed back into chat sizing while a PDF is
-    // opening or a response is streaming.
+    // The transcript, the map navigator and the thought inbox are one hosting
+    // view with a tab strip.  A map used to be a card above the chat whose
+    // height this controller recalculated by hand; giving the three faces the
+    // same area removes that arithmetic and gives a study plan room to be read
+    // in.
     AnchoraMapModel *mapModel = [[AnchoraMapModel alloc] init];
-    NSView *mapCard = [AnchoraHosting mapViewWithModel:mapModel pageLabels:[self pdfPageLabels]];
-    [mapCard setHidden:YES];
-    [rootView addSubview:mapCard];
-
     AnchoraChatModel *chatModel = [[AnchoraChatModel alloc] init];
-    NSView *chatView = [AnchoraHosting chatViewWithModel:chatModel];
-    [rootView addSubview:chatView];
+    AnchoraInboxModel *inboxModel = [[AnchoraInboxModel alloc] init];
+    AnchoraPaneModel *paneModel = [[AnchoraPaneModel alloc] init];
+    NSView *paneView = [AnchoraHosting paneViewWithPane:paneModel
+                                                   chat:chatModel
+                                                    map:mapModel
+                                                  inbox:inboxModel
+                                             pageLabels:[self pdfPageLabels]];
+    [rootView addSubview:paneView];
 
     // Quick actions and the ask bar are one SwiftUI view.  Building the quick
     // action row from NSStackView arranged subviews is what used to make
     // AppKit measure it recursively while a PDF was opening.
     AnchoraComposerModel *composerModel = [[AnchoraComposerModel alloc] init];
     NSView *composer = [AnchoraHosting composerViewWithModel:composerModel];
-    [rootView addSubview:composer positioned:NSWindowAbove relativeTo:chatView];
+    [rootView addSubview:composer positioned:NSWindowAbove relativeTo:paneView];
 
     [NSLayoutConstraint activateConstraints:@[
-        [mapCard.leadingAnchor constraintEqualToAnchor:header.leadingAnchor],
-        [mapCard.trailingAnchor constraintEqualToAnchor:header.trailingAnchor],
-        [mapCard.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:8.0],
-        [chatView.leadingAnchor constraintEqualToAnchor:rootView.leadingAnchor constant:8.0],
-        [chatView.trailingAnchor constraintEqualToAnchor:rootView.trailingAnchor constant:-8.0],
-        [chatView.topAnchor constraintEqualToAnchor:mapCard.bottomAnchor constant:8.0],
-        [chatView.bottomAnchor constraintEqualToAnchor:composer.topAnchor constant:-8.0],
-        [chatView.heightAnchor constraintGreaterThanOrEqualToConstant:120.0],
+        [paneView.leadingAnchor constraintEqualToAnchor:rootView.leadingAnchor constant:8.0],
+        [paneView.trailingAnchor constraintEqualToAnchor:rootView.trailingAnchor constant:-8.0],
+        [paneView.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:6.0],
+        [paneView.bottomAnchor constraintEqualToAnchor:composer.topAnchor constant:-8.0],
+        [paneView.heightAnchor constraintGreaterThanOrEqualToConstant:140.0],
         [composer.leadingAnchor constraintEqualToAnchor:rootView.leadingAnchor constant:12.0],
         [composer.trailingAnchor constraintEqualToAnchor:rootView.trailingAnchor constant:-12.0],
         [composer.bottomAnchor constraintEqualToAnchor:rootView.bottomAnchor constant:-12.0],
@@ -364,14 +412,12 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
     ]];
 
     self.aiView = rootView;
-    self.aiMapCard = mapCard;
     self.aiMapModel = mapModel;
-    self.aiMapHeightConstraint = [mapCard.heightAnchor constraintEqualToConstant:0.0];
-    self.aiMapHeightConstraint.priority = NSLayoutPriorityRequired;
-    self.aiMapHeightConstraint.active = YES;
+    self.aiPaneModel = paneModel;
+    self.aiPaneView = paneView;
+    self.aiInboxModel = inboxModel;
     self.aiHeaderModel = headerModel;
     self.aiHeaderView = header;
-    self.aiChatView = chatView;
     self.aiChatModel = chatModel;
     self.aiComposerModel = composerModel;
 
@@ -398,8 +444,13 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
         NSArray<NSString *> *labels = [weakSelf pdfPageLabels];
         return (pageIndex >= 0 && (NSUInteger)pageIndex < [labels count]) ? [labels objectAtIndex:(NSUInteger)pageIndex] : @"";
     }];
-    [mapModel setOnLayoutChange:^{
-        [weakSelf updateMapCardHeight];
+    // A note records where the reader was, and is asked for it only as the
+    // note is written -- nothing has to keep pace with scrolling.
+    [inboxModel setSourceTitleProvider:^NSString *{
+        return [weakSelf currentDocumentTitle];
+    }];
+    [inboxModel setSourcePageProvider:^NSInteger{
+        return [weakSelf currentPageNumber];
     }];
     [composerModel setOnSubmit:^{
         [weakSelf askAI:nil];
@@ -493,6 +544,7 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
     SKPDFView *pdfView = [mainController pdfView];
     if (pdfView == nil || self.aiHeaderModel == nil)
         return;
+    [self claimQuickCaptureSource];
 
     // Option-drag and Command-Option-drag each post their own notification
     // when the drag finishes, and are handled by their own capture path.
@@ -600,6 +652,34 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
         [self cancelCurrentAIRequest];
         return;
     }
+    NSString *typed = [[self.aiComposerModel questionText] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (self.aiQuizPending) {
+        if ([typed length] == 0) {
+            NSBeep();
+            return;
+        }
+        // Marking re-attaches the page the questions were asked about, so the
+        // answers are checked against the material rather than against the
+        // model's memory of its own questions.
+        PDFPage *page = self.aiQuizPage ?: [[mainController pdfView] currentPage];
+        [self setQuizPending:NO page:nil];
+        [self analyzePage:page
+                 question:[AnchoraPrompts quizGradingPromptWithAnswers:typed]
+          displayQuestion:typed];
+        return;
+    }
+    [self askAIAboutSelectionWithQuestion:[typed length] ? typed : @"Explain this"
+                          displayQuestion:[typed length] ? typed : @"Explain this"];
+}
+
+/// The shared selection path.  A quick action sends its instructions here with
+/// a short display title, so the transcript shows what the reader asked for
+/// rather than the paragraph of instructions that went with it.
+- (void)askAIAboutSelectionWithQuestion:(NSString *)question displayQuestion:(NSString *)displayQuestion {
+    if (self.aiClient) {
+        [self cancelCurrentAIRequest];
+        return;
+    }
     if ([self.aiSelection hasContext] == NO && [self.aiSelection isRecognizingText] == NO)
         [self updateSelectionContext:nil];
     AnchoraSelection *selection = self.aiSelection;
@@ -619,9 +699,6 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
         return;
     }
 
-    NSString *question = [[self.aiComposerModel questionText] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    if ([question length] == 0)
-        question = @"Explain this";
     [self startAIRequestWithQuestion:question
                           sourceText:[selection text]
                         imageDataURL:[selection imageDataURL]
@@ -630,46 +707,100 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
                            selection:[selection selection]
                                 page:[selection page]
                             pageRect:[selection pageRect]
-                     displayQuestion:question];
+                     displayQuestion:displayQuestion];
 }
 
-- (void)performQuickActionAtIndex:(NSInteger)tag {
-    if ([self isScientificReadingProfile] == NO) {
-        // The study map plans the whole document, so unlike the other study
-        // actions it needs no selection.
-        if (tag == [AnchoraPrompts studyMapActionTag]) {
-            [self startWholeDocumentRequestWithQuestion:[AnchoraPrompts studyMapPrompt]
-                                        displayQuestion:[AnchoraPrompts studyMapTitle]
-                                                mapKind:AnchoraMapKindStudy];
-            return;
-        }
-        [self.aiComposerModel setQuestionText:[AnchoraPrompts studyQuickActionPromptWithTag:tag]];
-        [self askAI:nil];
-        return;
-    }
+- (void)performQuickActionAtIndex:(NSInteger)index {
+    [self performAnchoraQuickAction:[AnchoraPrompts rowActionWithProfile:[[AnchoraSettings sharedSettings] readingProfile]
+                                                                   index:index]];
+}
 
+/// The ``•••`` entries carry their action in the menu item's tag, so an action
+/// means the same thing wherever it is offered.
+- (IBAction)performAnchoraMenuAction:(id)sender {
+    [self performAnchoraQuickAction:(AnchoraQuickAction)[(NSMenuItem *)sender tag]];
+}
+
+- (void)performAnchoraQuickAction:(AnchoraQuickAction)action {
     if (self.aiClient) {
         [self cancelCurrentAIRequest];
         return;
     }
-    NSString *question = [AnchoraPrompts scientificQuickActionPromptWithTag:tag];
+    NSString *question = [AnchoraPrompts promptForAction:action];
+    NSString *displayQuestion = [AnchoraPrompts displayTitleForAction:action];
+
+    switch ([AnchoraPrompts scopeForAction:action]) {
+        case AnchoraActionScopeDocument:
+            [self startWholeDocumentRequestWithQuestion:question
+                                        displayQuestion:displayQuestion
+                                                mapKind:[AnchoraPrompts mapKindForAction:action]];
+            return;
+        case AnchoraActionScopePage:
+            [self performPageAction:action];
+            return;
+        case AnchoraActionScopeSelection:
+            break;
+    }
+
+    // A study action explains what the reader picked out, and says so when
+    // nothing is picked.  The scientific questions stay answerable from the
+    // whole paper, which is how a reader asks them before selecting anything.
+    if ([self isScientificReadingProfile] == NO) {
+        [self askAIAboutSelectionWithQuestion:question displayQuestion:displayQuestion];
+        return;
+    }
     if ([self.aiSelection hasContext] == NO)
         [self updateSelectionContext:nil];
-    BOOL hasDirectContext = [self.aiSelection hasContext];
-    NSString *displayQuestion = [AnchoraPrompts scientificQuickActionDisplayTitleWithTag:tag];
-    // Paper is always a whole-document action. The other actions use a live
-    // selection when present; otherwise they remain useful by using the
-    // complete paper (or the visible page for Figure).
-    if (tag == 0) {
-        [self startWholeDocumentRequestWithQuestion:question displayQuestion:displayQuestion mapKind:AnchoraMapKindPaper];
-    } else if (hasDirectContext) {
-        [self.aiComposerModel setQuestionText:question];
-        [self askAI:nil];
-    } else if (tag == 4) {
+    if ([self.aiSelection hasContext]) {
+        [self askAIAboutSelectionWithQuestion:question displayQuestion:displayQuestion];
+    } else if (action == AnchoraQuickActionFigure) {
         [self analyzeCurrentPageWithQuestion:question displayQuestion:@"Analyze current page figure"];
     } else {
         [self startWholeDocumentRequestWithQuestion:question displayQuestion:displayQuestion];
     }
+}
+
+/// Recall and Quiz both act on the page in front of the reader rather than on
+/// a selection: they are asked once a page has been read, not about a phrase
+/// inside it.
+- (void)performPageAction:(AnchoraQuickAction)action {
+    PDFPage *page = [[mainController pdfView] currentPage];
+    if (page == nil) {
+        NSBeep();
+        return;
+    }
+    if (action == AnchoraQuickActionRecall) {
+        NSString *summary = [[self.aiComposerModel questionText] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if ([summary length] == 0) {
+            NSBeep();
+            if ([self.aiChatModel containsText:[AnchoraPrompts recallNeedsSummaryMessage]] == NO)
+                [self appendChatMessageFrom:SKAIAssistantName text:[AnchoraPrompts recallNeedsSummaryMessage]];
+            [self.aiComposerModel focusQuestionField];
+            return;
+        }
+        // The transcript keeps what the reader claimed with the correction
+        // under it; that pairing is the feedback, so the display question is
+        // the reader's own sentence rather than a label.
+        [self analyzePage:page
+                 question:[AnchoraPrompts recallPromptWithSummary:summary]
+          displayQuestion:summary];
+        return;
+    }
+
+    if ([self analyzePage:page
+                 question:[AnchoraPrompts quizPrompt]
+          displayQuestion:[AnchoraPrompts quizDisplayTitleWithPageNumber:[page pageIndex] + 1]])
+        [self setQuizPending:YES page:page];
+}
+
+/// While a quiz is pending the ask bar says what it now wants.  A mode with no
+/// visible sign of being on is a mode that swallows the next question.
+- (void)setQuizPending:(BOOL)pending page:(PDFPage *)page {
+    self.aiQuizPending = pending;
+    self.aiQuizPage = pending ? page : nil;
+    [self.aiComposerModel setPlaceholderText:pending
+        ? [AnchoraPrompts quizAnswerPlaceholder]
+        : [AnchoraPrompts composerPlaceholderWithProfile:[[AnchoraSettings sharedSettings] readingProfile]]];
 }
 
 - (void)setWebVerificationEnabledFromComposer:(BOOL)enabled {
@@ -683,6 +814,17 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
     [noteArrayController setFilterPredicate:predicate];
     [noteArrayController rearrangeObjects];
     [noteOutlineView reloadData];
+}
+
+- (IBAction)showAIInbox:(id)sender {
+    [self.aiInboxModel reload];
+    [self.aiPaneModel showInbox];
+    [self.aiInboxModel focusDraftField];
+}
+
+- (IBAction)captureThought:(id)sender {
+    [self claimQuickCaptureSource];
+    [[AnchoraQuickCapture shared] show];
 }
 
 - (IBAction)showAllNotesDashboard:(id)sender {
@@ -732,6 +874,19 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
     BOOL scientific = [self isScientificReadingProfile];
     [menu addItemWithTitle:scientific ? @"Analyze This Paper Page" : @"Summarize This Page" action:@selector(summarizeCurrentPage:) target:self];
     [menu addItemWithTitle:scientific ? @"Build Paper Map (PDF)" : @"Summarize This PDF" action:@selector(summarizeDocument:) target:self];
+    // The quick action row holds only the reading loop -- what a reader
+    // presses on nearly every page.  The rest of the profile's actions live
+    // here, where a row of six buttons used to.
+    for (NSNumber *rawAction in [AnchoraPrompts overflowActionsWithProfile:[[AnchoraSettings sharedSettings] readingProfile]]) {
+        AnchoraQuickAction action = (AnchoraQuickAction)[rawAction integerValue];
+        NSMenuItem *actionItem = [[NSMenuItem alloc] initWithTitle:[AnchoraPrompts menuTitleForAction:action]
+                                                            action:@selector(performAnchoraMenuAction:)
+                                                     keyEquivalent:@""];
+        [actionItem setTarget:self];
+        [actionItem setTag:action];
+        [actionItem setToolTip:[AnchoraPrompts tooltipForAction:action]];
+        [menu addItem:actionItem];
+    }
     [menu addItem:[NSMenuItem separatorItem]];
     NSMenu *languageMenu = [[NSMenu alloc] initWithTitle:@"Response language"];
     NSMenuItem *chineseItem = [[NSMenuItem alloc] initWithTitle:@"繁體中文" action:@selector(changeAIResponseLanguage:) keyEquivalent:@""];
@@ -798,6 +953,18 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
     NSMenuItem *dashboardItem = [[NSMenuItem alloc] initWithTitle:@"Notes dashboard" action:nil keyEquivalent:@""];
     [dashboardItem setSubmenu:notesMenu];
     [menu addItem:dashboardItem];
+    [menu addItem:[NSMenuItem separatorItem]];
+    NSUInteger waiting = [[AnchoraStore shared] openNoteCount];
+    NSString *inboxTitle = waiting > 0
+        ? [NSString stringWithFormat:@"Inbox (%lu waiting)", (unsigned long)waiting]
+        : @"Inbox";
+    [menu addItemWithTitle:inboxTitle action:@selector(showAIInbox:) target:self];
+    NSMenuItem *captureItem = [[NSMenuItem alloc] initWithTitle:@"Capture a Thought…"
+                                                         action:@selector(captureThought:)
+                                                  keyEquivalent:@"j"];
+    [captureItem setKeyEquivalentModifierMask:NSEventModifierFlagCommand | NSEventModifierFlagShift];
+    [captureItem setTarget:self];
+    [menu addItem:captureItem];
     [menu addItem:[NSMenuItem separatorItem]];
     [menu addItemWithTitle:@"Set OpenAI API Key…" action:@selector(configureOpenAIAPIKey:) target:self];
     NSView *view = (NSView *)sender;
@@ -920,24 +1087,29 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
 }
 
 - (void)analyzeCurrentPageWithQuestion:(NSString *)question displayQuestion:(NSString *)displayQuestion {
-    SKPDFView *pdfView = [mainController pdfView];
-    PDFPage *page = [pdfView currentPage];
-    PDFDisplayBox box = [pdfView displayBox];
+    [self analyzePage:[[mainController pdfView] currentPage] question:question displayQuestion:displayQuestion];
+}
+
+/// Returns NO when the page could not be rendered, so a caller that was about
+/// to enter a mode -- a quiz waiting for answers -- does not enter it.
+- (BOOL)analyzePage:(PDFPage *)page question:(NSString *)question displayQuestion:(NSString *)displayQuestion {
+    PDFDisplayBox box = [[mainController pdfView] displayBox];
     NSString *pageImageDataURL = [self imageDataURLForEntirePage:page displayBox:box];
     if ([pageImageDataURL length] == 0) {
         NSBeep();
-        [self appendChatMessageFrom:SKAIAssistantName text:@"I could not render this page as an image."];
-        return;
+        [self appendChatMessageFrom:SKAIAssistantName text:[AnchoraPrompts pageRenderFailureMessage]];
+        return NO;
     }
     NSUInteger pageNumber = [page pageIndex] + 1;
-    [self.aiHeaderModel setContextText:[NSString stringWithFormat:@"Page %lu image attached for visual summary", (unsigned long)pageNumber]];
+    [self.aiHeaderModel setContextText:[AnchoraPrompts pageAttachedMessageWithPageNumber:pageNumber]];
     [self startAIRequestWithQuestion:question
-                           sourceText:@"A complete rendered image of this PDF page is attached."
+                           sourceText:[AnchoraPrompts pageImageContextText]
                          imageDataURL:pageImageDataURL
                           fileDataURL:nil
                              fileName:nil
                             selection:nil page:page pageRect:[page boundsForBox:box]
                        displayQuestion:displayQuestion];
+    return YES;
 }
 
 - (void)startWholeDocumentRequestWithQuestion:(NSString *)question displayQuestion:(NSString *)displayQuestion {
@@ -1028,7 +1200,8 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
         if ([text length] && [[turn response] length] == 0)
             [[turn response] setString:text];
         if ([turn isMap]) {
-            [self presentMapFromResponse:[turn response] kind:[turn mapKind]];
+            [self presentMapFromResponse:[turn response] kind:[turn mapKind] select:YES];
+            [self saveMapFromTurn:turn];
             [self.aiChatModel removeStreamingMessage];
         }
         if ([webSources count]) {
@@ -1047,15 +1220,36 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
     [turn setStatus:nil];
 }
 
+- (void)saveMapFromTurn:(AnchoraTurn *)turn {
+    NSString *path = [self currentDocumentPath];
+    if ([path length] == 0 || [[turn response] length] == 0)
+        return;
+    [[AnchoraStore shared] saveMapWithResponse:[turn response]
+                                  kindRawValue:[turn mapKind]
+                                  documentPath:path
+                                         title:[self currentDocumentTitle]];
+}
+
 - (void)resetAIConversationForNewDocument {
     [self.aiClient cancel];
     self.aiClient = nil;
-    if (self.aiMapCard)
-        [AnchoraHosting updateMapView:self.aiMapCard model:self.aiMapModel pageLabels:[self pdfPageLabels]];
+    // The page labels are captured when the pane view is built, so the
+    // navigator has to be rebuilt against the document now open.
+    if (self.aiPaneView)
+        [AnchoraHosting updatePaneView:self.aiPaneView
+                                  pane:self.aiPaneModel
+                                  chat:self.aiChatModel
+                                   map:self.aiMapModel
+                                 inbox:self.aiInboxModel
+                            pageLabels:[self pdfPageLabels]];
     self.aiConversation = [NSMutableArray array];
     self.aiTurn = nil;
+    [self setQuizPending:NO page:nil];
     [self clearPaperMap];
     [self.aiChatModel clear];
+    [self.aiInboxModel reload];
+    [self claimQuickCaptureSource];
+    [self restoreSavedMap];
     [self queueWelcomeMessage];
 }
 
@@ -1064,7 +1258,9 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
     self.aiClient = nil;
     self.aiConversation = [NSMutableArray array];
     self.aiTurn = nil;
-    [self clearPaperMap];
+    [self setQuizPending:NO page:nil];
+    // The map is not cleared with the chat. It belongs to the document, it is
+    // saved, and rebuilding it costs another whole-PDF upload.
     [self.aiChatModel clear];
     [self.aiComposerModel setPinEnabled:NO];
     [self.aiComposerModel setRequestInFlight:NO];

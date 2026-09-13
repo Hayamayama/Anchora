@@ -78,6 +78,7 @@
 #import "SKNotePrefs.h"
 #import "SKDisplayPrefs.h"
 #import "NSData_SKExtensions.h"
+#import "Anchora-Swift.h"
 #import "PDFPage_SKExtensions.h"
 
 #define WEBSITE_URL @"https://skim-app.sourceforge.io/"
@@ -221,6 +222,11 @@ NSString *SKPageLabelsChangedNotification = @"SKPageLabelsChangedNotification";
     [sud removeObjectForKey:SKIsRelaunchKey];
     
     [NSApp setServicesProvider:[NSDocumentController sharedDocumentController]];
+
+    // One local key monitor for the whole application, so Command-Shift-J
+    // reaches the thought inbox from any window without a menu item in a nib
+    // that is localised ten times over.
+    [[AnchoraQuickCapture shared] installShortcut];
     
     NSString *versionString = [[[NSBundle mainBundle] infoDictionary] objectForKey:(__bridge NSString *)kCFBundleVersionKey];
     NSString *lastVersionString = [sud stringForKey:SKLastVersionLaunchedKey];

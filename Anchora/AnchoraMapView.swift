@@ -17,17 +17,13 @@ struct AnchoraMapView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3.0) {
             header
-            if model.isExpanded {
-                sectionPicker
-                sourcePicker
-                detail
-            }
+            sectionPicker
+            sourcePicker
+            detail
         }
         .padding(.horizontal, 8.0)
-        .padding(.vertical, 6.0)
+        .padding(.vertical, 8.0)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 12.0, style: .continuous))
         .environment(\.openURL, OpenURLAction { url in
             model.handle(url: url) ? .handled : .systemAction
         })
@@ -45,10 +41,6 @@ struct AnchoraMapView: View {
                 .truncationMode(.tail)
                 .help("Source quotes jump to, and select, their matching PDF text. Evidence labels separate direct results, author interpretation, inference, and what remains unproven.")
             Spacer(minLength: 4.0)
-            Button(model.isExpanded ? "Hide" : "Show") {
-                model.setExpanded(model.isExpanded == false)
-            }
-            .controlSize(.small)
         }
     }
 

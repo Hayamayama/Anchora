@@ -179,8 +179,8 @@ func testPromptsFollowSettings() {
     expect(verified.contains("web search"), "enabling Web verify reaches the instructions")
     expect(verified.contains("not stated or unclear"), "the scientific profile keeps its hedging rule")
 
-    expect(AnchoraPrompts.quickActionTitles(profile: .scientific).count == 6, "Scientific has six quick actions")
-    expect(AnchoraPrompts.quickActionTitles(profile: .study).count == 4, "Study has four quick actions")
+    expect(AnchoraPrompts.quickActionTitles(profile: .scientific).count == 3, "the scientific row is three buttons")
+    expect(AnchoraPrompts.quickActionTitles(profile: .study).count == 3, "and so is the study row")
     expectEqual(AnchoraPrompts.documentSummaryPrompt(profile: .scientific), AnchoraPrompts.paperMapPrompt,
                 "Summarize-this-PDF in Scientific is the paper map prompt")
 
@@ -624,22 +624,107 @@ func testStudyMapWithoutHeadings() {
                 "an empty response yields nothing")
 }
 
-/// The study map is the one study action that works on the whole document.
-func testStudyProfileActions() {
-    let titles = AnchoraPrompts.quickActionTitles(profile: .study)
-    expectEqual(titles.count, 4, "the study profile has four actions")
-    expectEqual(titles.first, "Study map", "and the whole-document one comes first")
-    expectEqual(AnchoraPrompts.quickActionTooltips(profile: .study).count, titles.count,
-                "every action explains itself")
-    expectEqual(AnchoraPrompts.studyQuickActionPrompt(tag: AnchoraPrompts.studyMapActionTag),
-                AnchoraPrompts.studyMapPrompt,
-                "the first action asks for the study map")
-    expect(AnchoraPrompts.studyQuickActionPrompt(tag: 1).contains("step by step"),
-           "Explain kept its prompt after the tags shifted")
-    expect(AnchoraPrompts.studyQuickActionPrompt(tag: 2).contains("Translate"),
-           "so did Translate")
-    expect(AnchoraPrompts.studyQuickActionPrompt(tag: 3).contains("clinical"),
-           "and Clinical")
+/// The row is the reading loop; everything else is one level down in the
+/// ••• menu.  What matters is that the split loses nothing: an action that is
+/// in neither list cannot be reached at all.
+func testEveryActionIsReachableExactlyOnce() {
+    for profile in [AnchoraReadingProfile.study, .scientific] {
+        let row = (0..<AnchoraPrompts.quickActionTitles(profile: profile).count)
+            .map { AnchoraPrompts.rowAction(profile: profile, index: $0) }
+        let overflow = AnchoraPrompts.overflowActions(profile: profile)
+            .map { AnchoraQuickAction(rawValue: $0.intValue)! }
+        expectEqual(row.count, 3, "the row is three buttons")
+        expectEqual(AnchoraPrompts.quickActionTooltips(profile: profile).count, row.count,
+                    "every button explains itself")
+        let offered = row + overflow
+        expectEqual(Set(offered.map(\.rawValue)).count, offered.count,
+                    "no action is offered in both places")
+        for action in offered {
+            expect(AnchoraPrompts.title(for: action).isEmpty == false, "every action has a button label")
+            expect(AnchoraPrompts.menuTitle(for: action).isEmpty == false, "and a menu title")
+            expect(AnchoraPrompts.displayTitle(for: action).isEmpty == false, "and a title for the transcript")
+            expect(AnchoraPrompts.tooltip(for: action).isEmpty == false, "and a tooltip")
+        }
+    }
+
+    let study = (0..<3).map { AnchoraPrompts.rowAction(profile: .study, index: $0) }
+    expectEqual(study, [.explain, .recall, .quiz], "the study row is the reading loop, in the order it is used")
+    expectEqual(AnchoraPrompts.overflowActions(profile: .study).map(\.intValue),
+                [AnchoraQuickAction.studyMap, .translate, .clinical].map(\.rawValue),
+                "the study map and the occasional lenses moved into •••")
+    expectEqual((0..<3).map { AnchoraPrompts.rowAction(profile: .scientific, index: $0) },
+                [.methods, .figure, .evidence], "the scientific row keeps the three per-selection lenses")
+
+    // The paper map is absent from the overflow on purpose: ••• already
+    // builds it as this profile's whole-PDF summary.
+    expect(AnchoraPrompts.overflowActions(profile: .scientific)
+        .contains(NSNumber(value: AnchoraQuickAction.paperMap.rawValue)) == false,
+           "the paper map is not listed twice in the same menu")
+    expectEqual(AnchoraPrompts.documentSummaryPrompt(profile: .scientific),
+                AnchoraPrompts.prompt(for: .paperMap), "because the whole-PDF summary is that prompt")
+
+    // A row index that no longer exists must not crash or silently fire
+    // whatever action happens to sit at that raw value.
+    expectEqual(AnchoraPrompts.rowAction(profile: .study, index: 9), .explain, "an out-of-range button is inert")
+    expectEqual(AnchoraPrompts.rowAction(profile: .study, index: -1), .explain, "in both directions")
+}
+
+/// What an action needs in front of it is a property of the action, not of
+/// which button happens to be pressed.
+func testActionScopes() {
+    expectEqual(AnchoraPrompts.scope(for: .recall), .page, "recall is asked about the page just read")
+    expectEqual(AnchoraPrompts.scope(for: .quiz), .page, "so is the quiz")
+    expectEqual(AnchoraPrompts.scope(for: .studyMap), .document, "a study map plans the whole document")
+    expectEqual(AnchoraPrompts.scope(for: .paperMap), .document, "and a paper map rebuilds the whole paper")
+    for action in [AnchoraQuickAction.explain, .translate, .clinical, .methods, .figure, .evidence] {
+        expectEqual(AnchoraPrompts.scope(for: action), .selection, "\(action) acts on what is selected")
+    }
+
+    expectEqual(AnchoraPrompts.mapKind(for: .studyMap), .study, "each map lands in its own navigator")
+    expectEqual(AnchoraPrompts.mapKind(for: .paperMap), .paper, "both of them")
+    expectEqual(AnchoraPrompts.mapKind(for: .explain), AnchoraMapKind.none, "an ordinary answer is not a map")
+
+    expectEqual(AnchoraPrompts.prompt(for: .studyMap), AnchoraPrompts.studyMapPrompt, "Study map kept its prompt")
+    expect(AnchoraPrompts.prompt(for: .explain).contains("step by step"), "so did Explain")
+    expect(AnchoraPrompts.prompt(for: .translate).contains("Translate"), "and Translate")
+    expect(AnchoraPrompts.prompt(for: .clinical).contains("clinical"), "and Clinical")
+    expect(AnchoraPrompts.prompt(for: .methods).contains("controls"), "and Methods")
+    // Recall has nothing to ask until the reader has written something.
+    expectEqual(AnchoraPrompts.prompt(for: .recall), "", "recall carries no standalone prompt")
+}
+
+/// A quiz that answers itself, or that asks which slide something was on,
+/// produces a feedback signal that is not about understanding.
+func testQuizAsksRatherThanTells() {
+    let prompt = AnchoraPrompts.quizPrompt
+    expect(prompt.contains("Do not answer them"), "the questions arrive without their answers")
+    expect(prompt.contains("do not hint"), "and without hints")
+    expect(prompt.lowercased().contains("not whether i can remember how it was worded"),
+           "it tests use, not recognition of the wording")
+    expect(prompt.contains("copied off the page"), "an answer that can be copied off the page is not a question")
+    expect(prompt.lowercased().contains("which slide"), "and neither is where something appeared")
+    expect(prompt.lowercased().contains("ask bar"), "the reader is told where the answers go")
+
+    let grading = AnchoraPrompts.quizGradingPrompt(answers: "1. because the pressure drops")
+    expect(grading.contains("1. because the pressure drops"), "the marking carries what was answered")
+    expect(grading.contains("softened version") , "and is not allowed to soften what is wrong")
+    expect(grading.lowercased().contains("fewer questions"), "an incomplete answer is still marked")
+    expectEqual(AnchoraPrompts.quizDisplayTitle(pageNumber: 7), "Quiz me on page 7",
+                "the transcript names the page that was quizzed")
+}
+
+/// Recall is a diff, not a summary: if the model summarises the page, the
+/// reader learns nothing about what they actually failed to encode.
+func testRecallComparesRatherThanSummarises() {
+    let prompt = AnchoraPrompts.recallPrompt(summary: "the alveoli swap gas by active transport")
+    expect(prompt.contains("the alveoli swap gas by active transport"), "the reader's own sentence is what gets marked")
+    expect(prompt.contains("Do not summarise the page"), "it is a comparison, not a summary")
+    expect(prompt.contains("**Wrong**") && prompt.contains("**Missed**"),
+           "wrong and missing are reported separately -- they call for different fixes")
+    expect(prompt.contains("Judge the idea, not the wording"), "loose phrasing of a correct idea is correct")
+    expect(prompt.contains("do not soften"), "and being told plainly is the point")
+    expect(AnchoraPrompts.recallNeedsSummaryMessage.contains("from memory"),
+           "an empty ask bar is told why writing first matters")
 }
 
 /// It plans how to study the document; it does not summarise it.
@@ -650,6 +735,179 @@ func testStudyMapPromptAsksForAPlan() {
     expect(prompt.contains("H2"), "blocks are headings, which is what the parser splits on")
     expect(prompt.lowercased().contains("depends on"), "the order is by dependency, not page order")
     expect(prompt.lowercased().contains("short of time"), "there is a short path for a reader in a hurry")
+}
+
+// MARK: - The store
+
+/// Every store test gets its own directory: the point of the store is what
+/// survives, so a test that read another test's leftovers would prove nothing.
+func makeStore(_ label: String) -> AnchoraStore {
+    let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+        .appendingPathComponent("anchora-tests-\(label)-\(UUID().uuidString)")
+    return AnchoraStore(directory: directory)
+}
+
+/// A store that has never been written to is the normal first-run state, not
+/// an error, and a note has to survive being written and read back.
+func testInboxRoundTrip() {
+    let store = makeStore("inbox")
+    expectEqual(store.notes().count, 0, "a store with no file behind it is empty, not broken")
+    expectEqual(store.openNoteCount(), 0, "and nothing is waiting")
+
+    store.addNote(text: "look up the half-life", sourceTitle: "Pharmacokinetics", sourcePage: 14)
+    store.addNote(text: "reply to Ben", sourceTitle: nil, sourcePage: 0)
+    let notes = store.notes()
+    expectEqual(notes.count, 2, "both notes were kept")
+    expectEqual(notes.first?.text, "reply to Ben", "newest first: the thought just written is the live one")
+    expectEqual(notes.last?.sourcePage, 14, "and a note remembers the page it was written on")
+
+    expect(store.addNote(text: "   ", sourceTitle: nil, sourcePage: 0) == nil,
+           "an accidental Return leaves nothing to tidy up")
+    expectEqual(store.notes().count, 2, "and stores nothing")
+
+    let store2 = AnchoraStore(directory: URL(fileURLWithPath: "/nonexistent-anchora-\(UUID().uuidString)"))
+    expectEqual(store2.notes().count, 0, "an unreadable store reads as empty rather than throwing")
+}
+
+/// Completing something is not deleting it; clearing is.
+func testInboxCompletionAndDeletion() {
+    let store = makeStore("done")
+    store.addNote(text: "one", sourceTitle: nil, sourcePage: 0)
+    store.addNote(text: "two", sourceTitle: nil, sourcePage: 0)
+    guard let first = store.notes().first else { return expect(false, "a note was stored") }
+
+    store.setNote(id: first.id, done: true)
+    expectEqual(store.openNoteCount(), 1, "a completed note stops being outstanding")
+    expectEqual(store.notes().count, 2, "but it is still there")
+    store.setNote(id: first.id, done: false)
+    expectEqual(store.openNoteCount(), 2, "and can be put back on the list")
+
+    store.setNote(id: "a note that does not exist", done: true)
+    expectEqual(store.openNoteCount(), 2, "an unknown id changes nothing")
+
+    store.setNote(id: first.id, done: true)
+    store.deleteDoneNotes()
+    expectEqual(store.notes().count, 1, "clearing takes only what was finished")
+    expectEqual(store.openNoteCount(), 1, "and leaves what is still open")
+
+    guard let survivor = store.notes().first else { return expect(false, "one note survived") }
+    store.deleteNote(id: survivor.id)
+    expectEqual(store.notes().count, 0, "deleting takes the note itself")
+}
+
+/// A note is worth little a day later without where it was written.
+func testNoteSourceDescription() {
+    expectEqual(AnchoraNote(text: "x", sourceTitle: "Gas exchange", sourcePage: 9).sourceDescription,
+                "p. 9 · Gas exchange", "page and document, when both are known")
+    expectEqual(AnchoraNote(text: "x", sourceTitle: "Gas exchange", sourcePage: 0).sourceDescription,
+                "Gas exchange", "just the document when there is no page")
+    expect(AnchoraNote(text: "x", sourceTitle: nil, sourcePage: 3).sourceDescription == nil,
+           "and nothing at all when it was not written while reading")
+}
+
+/// A map costs a whole-PDF upload. Reopening the document must not ask for it
+/// again.
+func testMapsAreKeptPerDocument() {
+    let store = makeStore("maps")
+    let lecture = "/Users/someone/Lectures/respiration.pdf"
+    let paper = "/Users/someone/Papers/hypoxia.pdf"
+
+    expect(store.latestMap(documentPath: lecture) == nil, "a document with no map has none")
+    expect(store.latestMap(documentPath: "") == nil, "and an unsaved document cannot have one")
+
+    store.saveMap(response: "## Gas exchange", kindRawValue: AnchoraMapKind.study.rawValue,
+                  documentPath: lecture, title: "respiration.pdf")
+    store.saveMap(response: "## Objective", kindRawValue: AnchoraMapKind.paper.rawValue,
+                  documentPath: paper, title: "hypoxia.pdf")
+
+    expectEqual(store.latestMap(documentPath: lecture)?.response, "## Gas exchange",
+                "the lecture's map comes back")
+    expectEqual(store.latestMap(documentPath: lecture)?.kindRawValue, AnchoraMapKind.study.rawValue,
+                "as the kind it was built as")
+    expectEqual(store.latestMap(documentPath: paper)?.response, "## Objective",
+                "and each document keeps its own")
+
+    // Rebuilding replaces rather than accumulates.
+    store.saveMap(response: "## Gas exchange, again", kindRawValue: AnchoraMapKind.study.rawValue,
+                  documentPath: lecture, title: "respiration.pdf")
+    expectEqual(store.map(kindRawValue: AnchoraMapKind.study.rawValue, documentPath: lecture)?.response,
+                "## Gas exchange, again", "a rebuilt map replaces the one before it")
+
+    store.saveMap(response: "", kindRawValue: AnchoraMapKind.study.rawValue,
+                  documentPath: lecture, title: "respiration.pdf")
+    expectEqual(store.latestMap(documentPath: lecture)?.response, "## Gas exchange, again",
+                "an empty response never overwrites a real map")
+
+    store.deleteMaps(documentPath: lecture)
+    expect(store.latestMap(documentPath: lecture) == nil, "deleting takes that document's maps")
+    expect(store.latestMap(documentPath: paper) != nil, "and leaves every other document alone")
+}
+
+/// Both kinds can exist for one document; the one restored on open is the one
+/// most recently built.
+func testLatestMapWins() {
+    let store = makeStore("latest")
+    let path = "/Users/someone/both.pdf"
+    store.saveMap(response: "paper", kindRawValue: AnchoraMapKind.paper.rawValue,
+                  documentPath: path, title: "both.pdf")
+    // Saved dates come from the clock, so make the second one unambiguously later.
+    Thread.sleep(forTimeInterval: 1.1)
+    store.saveMap(response: "study", kindRawValue: AnchoraMapKind.study.rawValue,
+                  documentPath: path, title: "both.pdf")
+    expectEqual(store.latestMap(documentPath: path)?.response, "study",
+                "the map built most recently is the one waiting behind the tab")
+    expectEqual(store.map(kindRawValue: AnchoraMapKind.paper.rawValue, documentPath: path)?.response, "paper",
+                "and the other is still addressable by kind")
+}
+
+/// The key is a digest of the path, so two documents cannot share a file and
+/// one document keeps the same file across launches.
+func testDocumentKeys() {
+    let a = AnchoraStore.documentKey(forPath: "/a/b.pdf")
+    expectEqual(a, AnchoraStore.documentKey(forPath: "/a/b.pdf"), "the same path keys the same record")
+    expect(a != AnchoraStore.documentKey(forPath: "/a/c.pdf"), "different documents do not collide")
+    expectEqual(a.count, 64, "a SHA-256 digest, so it is a legal filename of known length")
+}
+
+/// The inbox drawer and the Command-Shift-J panel are two views of one list.
+func testInboxModelWritesThrough() {
+    let store = makeStore("model")
+    let model = AnchoraInboxModel(store: store)
+    model.sourceTitleProvider = { "Respiration" }
+    model.sourcePageProvider = { 22 }
+
+    model.draft = "check the shunt equation"
+    expect(model.addDraft(), "a draft with something in it is stored")
+    expectEqual(model.draft, "", "and the field is emptied, ready for the next one")
+    expectEqual(model.openCount, 1, "the badge counts it")
+    expectEqual(model.notes.first?.sourcePage, 22, "the source is asked for at the moment of writing")
+
+    model.draft = "  "
+    expect(model.addDraft() == false, "an empty draft is not a note")
+    expectEqual(model.openCount, 1, "and does not move the count")
+
+    // A second view of the same store sees it, which is what the panel needs.
+    let other = AnchoraInboxModel(store: store)
+    expectEqual(other.openCount, 1, "another view of the same inbox sees the same list")
+
+    guard let note = model.notes.first else { return expect(false, "the note is there") }
+    model.setDone(note, true)
+    expectEqual(model.openCount, 0, "completing it clears the badge")
+    other.reload()
+    expectEqual(other.openCount, 0, "in every view of it")
+    expectEqual(model.doneNotes.count, 1, "while the note itself is kept")
+}
+
+/// A tab whose content has gone must not stay selected.
+func testPaneTabFallback() {
+    let pane = AnchoraPaneModel()
+    expectEqual(pane.tab, .chat, "the sidebar opens on the conversation")
+    pane.showMap()
+    expectEqual(pane.tab, .map, "and switches when a map is built")
+    pane.leaveTabIfShowing(.inbox)
+    expectEqual(pane.tab, .map, "leaving a tab it is not on changes nothing")
+    pane.leaveTabIfShowing(.map)
+    expectEqual(pane.tab, .chat, "a cleared map hands the area back to the conversation")
 }
 
 // MARK: - Capture geometry
@@ -807,7 +1065,18 @@ enum AnchoraCoreTests {
         testStudyMapSplitsOnAnyHeading()
         testStudyMapTitleIsPlainText()
         testStudyMapWithoutHeadings()
-        testStudyProfileActions()
+        testEveryActionIsReachableExactlyOnce()
+        testActionScopes()
+        testQuizAsksRatherThanTells()
+        testRecallComparesRatherThanSummarises()
+        testInboxRoundTrip()
+        testInboxCompletionAndDeletion()
+        testNoteSourceDescription()
+        testMapsAreKeptPerDocument()
+        testLatestMapWins()
+        testDocumentKeys()
+        testInboxModelWritesThrough()
+        testPaneTabFallback()
         testStudyMapPromptAsksForAPlan()
         testMarkdownBlockKinds()
         testMarkdownNestedList()

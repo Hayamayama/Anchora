@@ -26,6 +26,15 @@ public final class AnchoraMapModel: NSObject, ObservableObject {
         }
     }
 
+    /// The tab's label, which has to stay short enough to sit in a strip.
+    public var shortTitle: String {
+        switch kind {
+        case .study: return "Study map"
+        case .paper: return "Paper map"
+        case .none: return "Map"
+        }
+    }
+
     public var legend: String {
         switch kind {
         case .study: return "Pick a block, then jump to its pages"
@@ -40,7 +49,6 @@ public final class AnchoraMapModel: NSObject, ObservableObject {
     /// raw text and would not survive being reflowed.
     public var rendersMarkdown: Bool { kind == .study }
     @Published public var selectedIndex: Int = 0
-    @Published public private(set) var isExpanded: Bool = false
 
     /// Jump to a cited page.
     @objc public var onOpenPage: ((Int) -> Void)?
@@ -48,18 +56,8 @@ public final class AnchoraMapModel: NSObject, ObservableObject {
     @objc public var onOpenQuote: ((String, Int) -> Void)?
     /// Zero-based page index -> the label the reader sees in the PDF.
     @objc public var pageLabelProvider: ((Int) -> String)?
-    /// Fired whenever `preferredHeight` may have changed, so the AppKit host
-    /// can update the card's height constraint.
-    @objc public var onLayoutChange: (() -> Void)?
 
     @objc public var isEmpty: Bool { sections.isEmpty }
-
-    /// A collapsed map keeps a slim always-visible header, so "Hide" cannot
-    /// strand the navigator with no way to bring it back.
-    @objc public var preferredHeight: CGFloat {
-        if sections.isEmpty { return 0.0 }
-        return isExpanded ? 248.0 : 34.0
-    }
 
     public var selectedSection: AnchoraMapSection? {
         sections.indices.contains(selectedIndex) ? sections[selectedIndex] : nil
@@ -72,22 +70,12 @@ public final class AnchoraMapModel: NSObject, ObservableObject {
         self.sections = sections
         self.kind = kind
         selectedIndex = 0
-        isExpanded = true
-        onLayoutChange?()
     }
 
     @objc public func clear() {
         sections = []
         kind = .none
         selectedIndex = 0
-        isExpanded = false
-        onLayoutChange?()
-    }
-
-    public func setExpanded(_ expanded: Bool) {
-        guard sections.isEmpty == false else { return }
-        isExpanded = expanded
-        onLayoutChange?()
     }
 
     // MARK: - Page labels

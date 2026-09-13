@@ -553,6 +553,65 @@ Release 建置 0 錯誤。`SKPDFView.m` 有 23 個警告，全部是 Skim 既有
 
 版本 `1.5.0 (13)`；測試 194 個檢查。
 
+### 1.6.0 — 回饋迴圈：Recall 與 Quiz
+
+讀完一頁不會產生任何「讀懂了沒有」的訊號，所以這一版加的兩個動作都只為了製造那個訊號：自己說一遍，或者被問。
+
+**Recall 是 diff，不是摘要。** 讀者先在輸入列憑記憶寫一兩句，再按 `Recall`；模型拿整頁影像對照，只回報差異，分成「對的」「錯的」「漏的」與「先補哪一個」四段。prompt 明講 **judge the idea, not the wording** —— 觀念對但講得鬆散算對，句子漂亮但機制講反不算對 —— 並且禁止先講好話、禁止把第二段講軟。輸入列是空的就不送出，改在對話裡說明為什麼一定要先寫：沒有先寫，這個比對就沒有任何意義。transcript 裡的「問題」就是讀者自己那句話，糾正接在它下面，那個配對本身就是回饋。
+
+**Quiz 只出題，不附答案。** 按下去模型針對當頁出 2–3 題然後停住，prompt 禁止它自問自答或給提示，並且明確要求考「能不能用」而不是「記不記得字面」：優先考套用到具體情境、區辨兩個相似的東西、預測條件改變後會怎樣、說明為什麼。**答案可以從頁面上抄下來的題目一律不算題目**，考版面、考在第幾張投影片的也不算。
+
+出完題之後 composer 進入待答狀態：placeholder 改成 `Type your answers here, then Send…`，下一次 Send 不再是提問而是交卷。批改會**重新附上出題時的那一頁**，而不是靠模型對自己剛才問了什麼的記憶 —— 因此 `aiQuizPage` 跟著旗標一起存，讀者在作答前捲到別頁也不會改到批改的依據。頁面 render 失敗時 `analyzePage:` 回 `NO`，待答狀態就不會進入。Clear chat 與切換 profile 都會清掉它。
+
+**快捷列砍到三顆，其餘下放 •••。** 原本 Study 四顆、Scientific 六顆，一排六顆按鈕等於沒有人會讀。分法是：**快捷列只放讀每一頁都會按的東西**，整份文件的計畫、一份文件只做一次的問題、偶爾才用的鏡頭，全部進 •••。
+
+- Study 列：`Explain` / `Recall` / `Quiz` —— 由左到右就是使用順序。`Study map`、`Translate`、`Clinical` 進 •••。
+- Scientific 列：`Methods` / `Figure` / `Evidence`。`Question` 與 `Hypothesis` 是一篇論文只問一次的整體問題（本來在沒有選取時就走整份文件路徑），進 •••。
+- `Paper` 直接刪掉：••• 的「Build Paper Map (PDF)」本來就是同一個 prompt，這個重複正是把列撐到六顆的原因。因此 `overflowActions` 刻意不含 paper map，測試也把這件事釘住。
+
+**動作不再用列上的 index 當身分。** 動作現在同時住在快捷列和選單兩個地方，再用 tag 分派的話，選單項的意義會被「列上剛好有幾顆按鈕」決定 —— 之前那組「tag 位移後各自仍對應正確 prompt」的測試就是這個設計在報警。改成 file-scope 的 `AnchoraQuickAction` 列舉，每個動作自己帶 title／menu title／display title／tooltip／prompt／scope／mapKind；`AnchoraActionScope` 說明它需要眼前有什麼（selection／page／document），view controller 就照 scope 分派而不是照 index。
+
+順帶把兩件重複收掉：`analyzeCurrentPageWithQuestion:` 裡硬寫的三個字串換成 `AnchoraPrompts` 既有的常數，並且一般化成 `analyzePage:question:displayQuestion:`（Recall 與批改都要指定頁而不是「目前那頁」）；`askAI:` 裡的選取檢查與送出抽成 `askAIAboutSelectionWithQuestion:displayQuestion:`，快捷動作因此可以送出完整指令卻在 transcript 上只顯示短標題 —— 以前 Study 的快捷動作是把整段 prompt 塞進輸入列再送，使用者的氣泡裡就是那一整段。
+
+Study 的歡迎訊息改成描述這個迴圈，否則兩顆新按鈕沒有任何地方解釋自己。
+
+85 個新檢查（194 → 279）：每個動作在「列 + •••」裡剛好出現一次（在兩邊都沒有的動作等於按不到）、越界的列 index 不會誤觸別的動作、每個 scope 與 mapKind 的對應、Quiz 不自答也不考字面、批改帶得到作答內容且不准把錯講軟、Recall 帶得到讀者那句話且是比對而非摘要。
+
+**尚未在畫面上實際操作驗證。** Release 建置與簽章通過、孤兒方法檢查通過、279 個檢查通過，但按鈕列與 ••• 的實際外觀、以及一次完整的 Quiz→作答→批改來回還沒跑過（會真的花 API 費用）。打包時 `/Applications` 裡的 1.5.0 正在執行，同 bundle ID 不宜再開一份，因此新版沒有在這台機器上啟動過。
+
+另外把既有 prompt 裡的空白修掉：`formattingInstructions` 與 `studyMapPrompt` 有五行是先前編輯把 `\` 續行吃掉、兩行黏起來留下的長串空白。重新斷行後以兩個版本各自編譯、印出字串比對，**正規化空白後完全相同**，只少了 80 bytes 的多餘空格。
+
+版本 `1.6.0 (14)`；測試 279 個檢查。
+
+### 1.7.0 — Store、雜念收納，以及把 map 拉開
+
+三件事其實是同一件：Anchora 到目前為止唯一留得住的東西是 PDF annotation，**剩下的全部活在記憶體裡**。所以這一版先做儲存，再把兩個一直被那個限制壓住的東西放開。
+
+**`AnchoraStore`：Application Support 底下的 JSON，原子寫入。** annotation 該留在 PDF 裡（別的 app 讀得到，這也是 Pin 寫標準 annotation 而不是私有格式的原因），但**讀書計畫是關於文件、卻不屬於文件**，而讀到一半冒出來的雜念根本跟文件無關 —— 這兩種東西沒有地方去。inbox 一個檔，每份文件一個檔。
+
+文件用**路徑**而不是內容雜湊當 key：Anchora 會改寫它讀的 PDF（存一個 highlight 就換掉了位元組），內容雜湊會讓剛建好的 map 當場變孤兒。代價是搬動檔案會失去該份 map；每筆紀錄旁邊存了 bookmark，就是為了之後能修好這件事而不必做資料遷移。
+
+**雜念收納。** 一個輸入框、一個清單，沒有專案、沒有到期日、沒有標籤 —— 那些都是「寫下來的當下要做的決定」，而寫下來的當下正是閱讀被打斷的那一刻。中斷真正貴的部分不是打字，是**離開**。
+
+- **⌘⇧J 從 app 任何地方叫出一個浮動視窗**，寫一行、Return 存檔關閉、Escape 丟掉。用 local event monitor 而不是選單項：選單項要動到一個翻成十種語言的 nib，而系統層級的全域熱鍵要 Input Monitoring 權限 —— 這個 app 沒有別的理由去要那個權限，而且公證流程本來就還沒跑通。local monitor 只看得到 Anchora 自己的鍵盤事件，不需要任何授權。
+- 每則筆記記下**當時人在哪**（文件與頁碼），只在寫下的那一刻去問，所以沒有任何東西需要跟著捲動同步。一天之後「對照前面那張圖」沒有這個就毫無價值。
+- 一份清單、多個視圖：每個開著的文件側欄各有一個抽屜，加上 ⌘⇧J 那個視窗。全部寫進同一個 store，各自發通知、其餘的重讀。
+- 同一瞬間寫下的兩則（連按 ⌘⇧J 就長這樣）以寫入順序決定先後，清單不會在兩次讀取之間自己重排 —— 這是測試抓出來的。
+
+**側欄的主體區變成可切換的三個面：`Chat | Map | Inbox`。** 原本 map 是擠在對話上方的卡片，248pt：讀一份讀書計畫太小，聊天時又佔太多，兩者永遠在搶同一塊側欄。它們本來就不是要同時看的東西 —— 導覽一份計畫跟問一個問題是兩種活動 —— 所以改成輪流，而且**每一面都拿到整個主體高度**。
+
+沒有把 map 做成跟 `Study`／`Scientific` 並列的第三顆按鈕：那兩個是「用哪種方式讀」，map 是「產出來的東西」，並列會把兩種性質不同的東西擺在同一層。
+
+副作用是一整套手算高度的程式碼消失了：`updateMapCardHeight`、`preferredHeight`、收合時那個 34pt 的殘留標題、隱藏時在 required 與 defaultHigh 之間切換的約束優先權，全部不再需要 —— 主體就是「被選中的那個 view」。`AnchoraMapModel` 也因此拿掉 `isExpanded`／`onLayoutChange`。
+
+**Map 會被存下來。** 建一次 map 要上傳整份 PDF，重開文件時直接把上次那份叫回來，等在它的分頁後面而不是自動跳出去（剛按下去要的那份才會自動切過去）。同一份文件兩種 map 都建過的話，還原最近建的那一份。另外 **Clear chat 不再清掉 map** —— map 屬於文件、而且現在存得住，跟著對話一起清掉是錯的。
+
+31 個新檢查（279 → 325）：空的 store 讀起來是空的而不是壞的、空白字串不會變成筆記、完成不等於刪除、清除只帶走已完成的、未知 id 不改變任何東西、每份文件各自保有自己的 map、空回應永遠不會覆蓋既有的 map、重建是取代而不是累加、路徑摘要穩定且不碰撞、兩個視圖看到同一份清單、內容消失的分頁不會繼續被選中。
+
+**畫面上一樣還沒實際操作。** Release 建置與簽章通過、孤兒方法檢查通過、325 個檢查通過，但分頁列、兩個抽屜、⌘⇧J 那個浮動視窗都還沒被眼睛看過；打包時 `/Applications` 的舊版正在執行，同 bundle ID 不宜再開一份。
+
+版本 `1.7.0 (15)`；測試 325 個檢查。
+
 ---
 
 ## 目前可用功能
@@ -568,7 +627,11 @@ Release 建置 0 錯誤。`SKPDFView.m` 有 23 個警告，全部是 Skim 既有
 
 - 選取文字後提問。
 - OCR 區域與圖片區域輸入。
-- `Study`／`Scientific` 閱讀 profile；Study 提供 Explain、Translate、Clinical，Scientific 提供 Paper、Question、Hypothesis、Methods、Figure、Evidence。
+- `Study`／`Scientific` 閱讀 profile。快捷列各三顆：Study 是 Explain／Recall／Quiz，Scientific 是 Methods／Figure／Evidence；其餘動作（Study map、Translate、Clinical、Question、Hypothesis）在 ••• 裡。
+- 當頁回饋：`Recall` 對照你憑記憶寫下的一句話，`Quiz` 出 2–3 題並在你作答後逐題批改。
+- 側欄主體可切換 `Chat`／`Map`／`Inbox` 三面，各自使用整個高度。
+- 雜念收納：⌘⇧J 從任何地方寫一行，記下當時的文件與頁碼；側欄 Inbox 抽屜管理。
+- Study map 與 Paper map 存在本機，重開文件時自動還原。
 - 全域繁體中文／English 回覆語言設定。
 - 可選擇的 Web verify 網路查證模式；回答後列出實際使用的網路來源。
 - 本機短期對話記憶與 Clear chat。
@@ -600,6 +663,9 @@ Release 建置 0 錯誤。`SKPDFView.m` 有 23 個警告，全部是 Skim 既有
 | 論文閱讀 | Scientific profile + whole-PDF input | 讓高層問題、方法、圖表、證據與限制可從整篇論文重建，而非只依一小段反白文字。 |
 | 回覆渲染 | 明確 bubble 文字高度與來源 footer constraints | 避免 AppKit 的 intrinsic-size 推算造成空白、截斷或 source link 重疊。 |
 | 穩定性 | 不使用 `NSStackView` arranged-subview/fitting-size 建立快捷列 | 避免 PDF 開檔時的 layout 量測迴圈與不受控記憶體成長。 |
+| 儲存 | Application Support 下的 JSON，原子寫入 | annotation 屬於 PDF；讀書計畫與雜念不屬於，但必須留得住。 |
+| 文件識別 | 檔案路徑雜湊，另存 bookmark | Anchora 會改寫它讀的 PDF，內容雜湊會讓剛建好的 map 變孤兒。 |
+| 全域捕捉 | app 內的 local event monitor | 系統層級熱鍵需要 Input Monitoring 授權，這個 app 沒有別的理由去要。 |
 | 發行 | Release + ad-hoc signing | 可直接在本機拖入 Applications；尚未公證，未適合公開散布。 |
 
 ---
@@ -624,8 +690,8 @@ codesign --verify --deep --strict --verbose=2 Distribution/PDFBuddy.app
 ## 發行位置
 
 - Release app：`Distribution/Anchora.app`
-- Release 附件：`Distribution/Anchora-1.5.0-macos-arm64.zip`（8.7 MB）
-- 版本：`1.5.0 (13)`
+- Release 附件：`Distribution/Anchora-1.7.0-macos-arm64.zip`（8.8 MB，SHA-256 `fa7c6e3b…`）
+- 版本：`1.7.0 (15)`
 - 最低系統：macOS 14.0
 - 大小：約 17 MB
 - Bundle ID：`com.kris.anchora`
