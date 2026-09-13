@@ -43,8 +43,13 @@ public final class AnchoraSelection: NSObject {
     @objc public let page: PDFPage?
     @objc public let pageRect: NSRect
     @objc public let isRecognizingText: Bool
-    /// What the CONTEXT card shows for this state.
+    /// What the header's context line shows for this state.
     @objc public let contextDescription: String
+    /// True when `contextDescription` is text Anchora extracted rather than a
+    /// message about what it is doing.  Only extracted text is worth opening:
+    /// it is what the model will actually be sent, and after OCR it is the
+    /// only chance to notice the page was read wrongly.
+    @objc public let isContextExpandable: Bool
     @objc public let hasTextSelection: Bool
 
     private init(generation: Int,
@@ -55,7 +60,8 @@ public final class AnchoraSelection: NSObject {
                  page: PDFPage?,
                  pageRect: NSRect,
                  isRecognizingText: Bool,
-                 contextDescription: String) {
+                 contextDescription: String,
+                 isContextExpandable: Bool) {
         self.generation = generation
         self.selection = selection
         self.hasTextSelection = hasTextSelection
@@ -65,6 +71,7 @@ public final class AnchoraSelection: NSObject {
         self.pageRect = pageRect
         self.isRecognizingText = isRecognizingText
         self.contextDescription = contextDescription
+        self.isContextExpandable = isContextExpandable
         super.init()
     }
 
@@ -85,7 +92,7 @@ public final class AnchoraSelection: NSObject {
     @objc public static func empty(message: String, after previous: AnchoraSelection?) -> AnchoraSelection {
         AnchoraSelection(generation: next(after: previous), selection: nil, hasTextSelection: false,
                          text: nil, imageDataURL: nil, page: nil, pageRect: .zero,
-                         isRecognizingText: false, contextDescription: message)
+                         isRecognizingText: false, contextDescription: message, isContextExpandable: false)
     }
 
     /// A text selection whose own text layer is trustworthy.
@@ -95,7 +102,7 @@ public final class AnchoraSelection: NSObject {
         AnchoraSelection(generation: next(after: previous),
                          selection: selection.copy() as? PDFSelection, hasTextSelection: true,
                          text: text, imageDataURL: nil, page: nil, pageRect: .zero,
-                         isRecognizingText: false, contextDescription: text)
+                         isRecognizingText: false, contextDescription: text, isContextExpandable: true)
     }
 
     /// Recognition has started; `message` explains the wait.
@@ -108,7 +115,7 @@ public final class AnchoraSelection: NSObject {
         AnchoraSelection(generation: next(after: previous),
                          selection: selection?.copy() as? PDFSelection, hasTextSelection: hasTextSelection,
                          text: nil, imageDataURL: nil, page: page, pageRect: pageRect,
-                         isRecognizingText: true, contextDescription: message)
+                         isRecognizingText: true, contextDescription: message, isContextExpandable: false)
     }
 
     /// A captured region sent as an image rather than as text.
@@ -120,7 +127,7 @@ public final class AnchoraSelection: NSObject {
                                    after previous: AnchoraSelection?) -> AnchoraSelection {
         AnchoraSelection(generation: next(after: previous), selection: nil, hasTextSelection: false,
                          text: text, imageDataURL: dataURL, page: page, pageRect: pageRect,
-                         isRecognizingText: false, contextDescription: message)
+                         isRecognizingText: false, contextDescription: message, isContextExpandable: false)
     }
 
     /// Recognition finished.  Keeps the same generation, so this result is
@@ -131,7 +138,8 @@ public final class AnchoraSelection: NSObject {
         return AnchoraSelection(generation: generation, selection: selection, hasTextSelection: hasTextSelection,
                                 text: usable, imageDataURL: imageDataURL, page: page, pageRect: pageRect,
                                 isRecognizingText: false,
-                                contextDescription: usable ?? failureMessage)
+                                contextDescription: usable ?? failureMessage,
+                                isContextExpandable: usable != nil)
     }
 }
 

@@ -69,6 +69,8 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
 @property (nonatomic, nullable, strong) AnchoraHeaderModel *aiHeaderModel;
 @property (nonatomic, nullable, strong) NSView *aiHeaderView;
 @property (nonatomic, nullable, strong) AnchoraComposerModel *aiComposerModel;
+// The ask bar grows with what is typed into it.
+@property (nonatomic, nullable, strong) NSLayoutConstraint *aiComposerHeightConstraint;
 // The transcript and the Paper Map navigator are SwiftUI.  AppKit owns only
 // their position and height in the sidebar; everything inside — wrapped text
 // height, bubble growth, scrolling, link handling — belongs to the framework.
@@ -338,7 +340,7 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
     [self.aiComposerModel setQuickActionTitles:[AnchoraPrompts quickActionTitlesWithProfile:profile]
                                       tooltips:[AnchoraPrompts quickActionTooltipsWithProfile:profile]];
     if ([self.aiSelection hasContext] == NO && [self.aiSelection isRecognizingText] == NO)
-        [self.aiHeaderModel setContextText:[AnchoraPrompts emptyContextMessageWithProfile:profile]];
+        [self.aiHeaderModel setContextText:[AnchoraPrompts emptyContextMessageWithProfile:profile] expandable:NO];
 }
 
 - (void)changeAIReadingProfileToScientific:(BOOL)scientific {
@@ -405,11 +407,15 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
         [composer.leadingAnchor constraintEqualToAnchor:rootView.leadingAnchor constant:12.0],
         [composer.trailingAnchor constraintEqualToAnchor:rootView.trailingAnchor constant:-12.0],
         [composer.bottomAnchor constraintEqualToAnchor:rootView.bottomAnchor constant:-12.0],
-        // A fixed height rather than an intrinsic one: nothing in the composer
-        // wraps, so its height must not be allowed to depend on the sidebar's
-        // width.
-        [composer.heightAnchor constraintEqualToConstant:[AnchoraHosting composerHeight]]
     ]];
+    // Still an explicit height rather than an intrinsic one -- the composer is
+    // never allowed to measure itself into the sidebar's layout.  The number
+    // now comes from the view, which lays the typed text out at the width the
+    // sidebar gave it and reports what it needs.  Below required, so a very
+    // short sidebar takes it back rather than breaking.
+    self.aiComposerHeightConstraint = [composer.heightAnchor constraintEqualToConstant:[AnchoraHosting composerHeight]];
+    self.aiComposerHeightConstraint.priority = NSLayoutPriorityDefaultHigh;
+    self.aiComposerHeightConstraint.active = YES;
 
     self.aiView = rootView;
     self.aiMapModel = mapModel;
@@ -466,6 +472,9 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
     }];
     [composerModel setOnWebVerifyChanged:^(BOOL enabled) {
         [weakSelf setWebVerificationEnabledFromComposer:enabled];
+    }];
+    [composerModel setOnHeightChange:^(CGFloat height) {
+        weakSelf.aiComposerHeightConstraint.constant = height;
     }];
     [headerModel setOnProfileChange:^(BOOL scientific) {
         [weakSelf changeAIReadingProfileToScientific:scientific];
@@ -537,7 +546,7 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
 
 - (void)applySelection:(AnchoraSelection *)selection {
     self.aiSelection = selection;
-    [self.aiHeaderModel setContextText:[selection contextDescription]];
+    [self.aiHeaderModel setContextText:[selection contextDescription] expandable:[selection isContextExpandable]];
 }
 
 - (void)updateSelectionContext:(NSNotification *)notification {
@@ -613,7 +622,7 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
 
     NSString *dataURL = [AnchoraCapture regionImageDataURLWithPage:page box:[pdfView displayBox] rect:pageRect];
     if ([dataURL length] == 0) {
-        [self.aiHeaderModel setContextText:[AnchoraPrompts imageCaptureFailureMessage]];
+        [self.aiHeaderModel setContextText:[AnchoraPrompts imageCaptureFailureMessage] expandable:NO];
         return;
     }
     [self applySelection:[AnchoraSelection imageWithDataURL:dataURL
@@ -1101,7 +1110,7 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
         return NO;
     }
     NSUInteger pageNumber = [page pageIndex] + 1;
-    [self.aiHeaderModel setContextText:[AnchoraPrompts pageAttachedMessageWithPageNumber:pageNumber]];
+    [self.aiHeaderModel setContextText:[AnchoraPrompts pageAttachedMessageWithPageNumber:pageNumber] expandable:NO];
     [self startAIRequestWithQuestion:question
                            sourceText:[AnchoraPrompts pageImageContextText]
                          imageDataURL:pageImageDataURL
@@ -1139,7 +1148,7 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
     NSURL *fileURL = [(NSDocument *)[mainController document] fileURL];
     NSString *fileName = [[fileURL lastPathComponent] length] ? [fileURL lastPathComponent] : @"document.pdf";
     NSString *fileDataURL = [@"data:application/pdf;base64," stringByAppendingString:[pdfData base64EncodedStringWithOptions:0]];
-    [self.aiHeaderModel setContextText:[NSString stringWithFormat:@"Complete PDF attached: %lu pages", (unsigned long)pageCount]];
+    [self.aiHeaderModel setContextText:[AnchoraPrompts documentAttachedMessageWithPageCount:pageCount] expandable:NO];
     PDFPage *page = [[mainController pdfView] currentPage];
     [self startAIRequestWithQuestion:question
                            sourceText:@"The complete original PDF is attached."

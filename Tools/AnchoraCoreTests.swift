@@ -910,6 +910,66 @@ func testPaneTabFallback() {
     expectEqual(pane.tab, .chat, "a cleared map hands the area back to the conversation")
 }
 
+// MARK: - The composer's height, and the context line
+
+/// The composer is still given an explicit height by AppKit; what changed is
+/// that the number moves.  The clamp is what keeps a growing field from eating
+/// the sidebar, so it is the part worth pinning down.
+func testComposerHeightClamp() {
+    expectEqual(AnchoraComposerModel.clampHeight(10.0), AnchoraComposerModel.minimumHeight,
+                "the composer never goes below one line plus its two rows")
+    expectEqual(AnchoraComposerModel.clampHeight(10_000.0), AnchoraComposerModel.maximumHeight,
+                "and never grows without limit -- past the cap the field scrolls")
+    expectEqual(AnchoraComposerModel.clampHeight(120.0), 120.0, "anything in between is used as measured")
+    expectEqual(AnchoraComposerModel.clampHeight(.nan), AnchoraComposerModel.minimumHeight,
+                "a measurement that is not a number is not allowed into a constraint")
+    expectEqual(AnchoraComposerModel.clampHeight(.infinity), AnchoraComposerModel.minimumHeight,
+                "nor an infinite one")
+    expect(AnchoraComposerModel.minimumHeight < AnchoraComposerModel.maximumHeight,
+           "the two bounds are the right way round")
+
+    expectEqual(AnchoraComposerModel.clampFieldHeight(1.0), AnchoraComposerModel.minimumFieldHeight,
+                "the text itself starts at one line")
+    expectEqual(AnchoraComposerModel.clampFieldHeight(10_000.0), AnchoraComposerModel.maximumFieldHeight,
+                "and stops at about six")
+}
+
+/// Sending empties the field, and the composer has to come back down with it:
+/// there is no keystroke to report a height when the text is removed from
+/// under it.
+func testClearingTheQuestionShrinksTheField() {
+    let model = AnchoraComposerModel()
+    model.reportFieldHeight(90.0)
+    expectEqual(model.fieldHeight, 90.0, "a measured height is taken")
+    model.setQuestionText("")
+    expectEqual(model.fieldHeight, AnchoraComposerModel.minimumFieldHeight,
+                "and an emptied field returns to one line")
+
+    model.reportFieldHeight(90.0)
+    model.setQuestionText("still something here")
+    expectEqual(model.fieldHeight, 90.0, "while replacing the text leaves the measured height alone")
+}
+
+/// The context card became one line, so what goes on that line has to survive
+/// the hard line breaks a PDF text layer is full of -- they mean nothing
+/// outside the page's own column width, and truncating at the first one would
+/// show almost nothing.
+func testContextSummaryIsOneLine() {
+    expectEqual(AnchoraHeaderModel.summary(of: "alveolar\nventilation\nand perfusion"),
+                "alveolar ventilation and perfusion", "line breaks in the text layer are collapsed")
+    expectEqual(AnchoraHeaderModel.summary(of: "  spaced   out  "), "spaced   out",
+                "the ends are trimmed without rewriting the middle")
+    expectEqual(AnchoraHeaderModel.summary(of: "\n\n"), "", "text that is only breaks summarises to nothing")
+
+    let model = AnchoraHeaderModel()
+    model.setContextText("Select text in the PDF to give AI context.", expandable: false)
+    expect(model.isContextExpandable == false, "a message about what to do has nothing more to show")
+    model.setContextText("The alveolar gas equation is", expandable: true)
+    expect(model.isContextExpandable, "extracted text does -- it is what will actually be sent")
+    model.setContextText("   ", expandable: true)
+    expect(model.isContextExpandable == false, "but there is nothing to open when there is no text")
+}
+
 // MARK: - Capture geometry
 
 /// Two things have to be undone before a page rectangle matches what drawing
@@ -1077,6 +1137,9 @@ enum AnchoraCoreTests {
         testDocumentKeys()
         testInboxModelWritesThrough()
         testPaneTabFallback()
+        testComposerHeightClamp()
+        testClearingTheQuestionShrinksTheField()
+        testContextSummaryIsOneLine()
         testStudyMapPromptAsksForAPlan()
         testMarkdownBlockKinds()
         testMarkdownNestedList()

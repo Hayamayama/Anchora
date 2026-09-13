@@ -16,6 +16,16 @@ public final class AnchoraHeaderModel: NSObject, ObservableObject {
     @Published public private(set) var subtitle: String = ""
     @Published public private(set) var contextTitle: String = ""
     @Published public private(set) var contextText: String = ""
+    /// The single line the header shows.  The card this replaced was 86 points
+    /// of sidebar spent mostly on text the reader could already see selected
+    /// in the PDF beside it; the states worth the space are the ones the PDF
+    /// cannot show -- OCR still running, a region captured as an image, the
+    /// whole document attached -- and those are one line each anyway.
+    @Published public private(set) var contextSummary: String = ""
+    /// True only when the context is text Anchora extracted, which is the one
+    /// case where there is more to see than the summary: OCR output should be
+    /// checkable before it is paid for.
+    @Published public private(set) var isContextExpandable: Bool = false
     @Published public private(set) var isScientific: Bool = false
 
     /// Where the ••• button ended up, in the header view's own coordinates.
@@ -37,8 +47,21 @@ public final class AnchoraHeaderModel: NSObject, ObservableObject {
         self.contextTitle = contextTitle
     }
 
-    @objc public func setContextText(_ text: String) {
+    @objc public func setContextText(_ text: String, expandable: Bool) {
         contextText = text
+        contextSummary = AnchoraHeaderModel.summary(of: text)
+        isContextExpandable = expandable && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
+
+    /// One line, whatever arrives.  PDF text layers are full of hard line
+    /// breaks that mean nothing outside the page's own column width, so they
+    /// are collapsed rather than allowed to truncate the summary at the first
+    /// one.
+    static func summary(of text: String) -> String {
+        text.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { $0.isEmpty == false }
+            .joined(separator: " ")
     }
 
     func setMoreActionsAnchor(_ frame: CGRect) {

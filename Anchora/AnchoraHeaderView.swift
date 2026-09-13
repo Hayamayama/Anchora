@@ -25,17 +25,19 @@ private struct MoreActionsFrameKey: PreferenceKey {
 struct AnchoraHeaderView: View {
 
     @ObservedObject var model: AnchoraHeaderModel
+    @State private var isShowingContext: Bool = false
 
-    /// Fixed, like the composer: nothing here wraps to an unpredictable
-    /// height, and the context card scrolls rather than growing.
-    static let height: CGFloat = 146.0
-    private static let contextHeight: CGFloat = 86.0
+    /// Fixed: nothing here wraps to an unpredictable height.  The context is
+    /// one line, and the full text opens in a popover rather than pushing the
+    /// header taller -- which keeps the header a constant and leaves the
+    /// sidebar with one dynamic height (the composer's) instead of two.
+    static let height: CGFloat = 78.0
     private static let coordinateSpace = "AnchoraHeader"
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10.0) {
+        VStack(alignment: .leading, spacing: 8.0) {
             identityRow
-            contextCard
+            contextStrip
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .coordinateSpace(name: Self.coordinateSpace)
@@ -76,24 +78,50 @@ struct AnchoraHeaderView: View {
         .padding(.horizontal, 4.0)
     }
 
-    private var contextCard: some View {
-        VStack(alignment: .leading, spacing: 2.0) {
+    /// What Anchora would send if you asked right now, in one line.
+    private var contextStrip: some View {
+        HStack(spacing: 6.0) {
             Text(model.contextTitle)
-                .font(.system(size: 10.0, weight: .bold))
+                .font(.system(size: 9.5, weight: .bold))
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 6.0)
-            ScrollView(.vertical) {
-                Text(model.contextText)
-                    .font(.system(size: 12.0))
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 6.0)
+            Text(model.contextSummary)
+                .font(.system(size: 11.5))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if model.isContextExpandable {
+                Button {
+                    isShowingContext.toggle()
+                } label: {
+                    Image(systemName: "text.magnifyingglass")
+                        .font(.system(size: 10.0))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Show everything that would be sent as context")
+                .popover(isPresented: $isShowingContext, arrowEdge: .bottom) {
+                    contextDetail
+                }
             }
         }
-        .padding(.vertical, 8.0)
-        .frame(maxWidth: .infinity, minHeight: Self.contextHeight, maxHeight: Self.contextHeight, alignment: .topLeading)
+        .padding(.horizontal, 8.0)
+        .padding(.vertical, 5.0)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 12.0, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 8.0, style: .continuous))
+    }
+
+    /// Opening it is how OCR output gets checked before it is paid for, so it
+    /// is selectable and roomy rather than a tooltip.
+    private var contextDetail: some View {
+        ScrollView(.vertical) {
+            Text(model.contextText)
+                .font(.system(size: 12.0))
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12.0)
+        }
+        .frame(width: 320.0, height: 220.0)
     }
 }

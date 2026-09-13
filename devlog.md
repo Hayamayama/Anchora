@@ -612,6 +612,41 @@ Study 的歡迎訊息改成描述這個迴圈，否則兩顆新按鈕沒有任�
 
 版本 `1.7.0 (15)`；測試 325 個檢查。
 
+### 1.7.1 — 會長高的輸入框，以及縮成一行的 CONTEXT
+
+**Return 送出，Shift-Return 換行，輸入框跟著內容往下長。** 交一份 quiz 的答案、寫一段憑記憶回想的內容，本來就該往下長而不是往右邊捲走。
+
+SwiftUI 自己的多行 `TextField(axis: .vertical)` 做不到這件事：**不管有沒有按 Shift，Return 都送出**，所以根本沒有辦法打第二行。這是實測出來的，不是猜的 —— 寫了一個 harness 把 `AnchoraComposerView` 單獨跑起來（不需要 PDF、不需要 API key、不碰 Skim），用合成的鍵盤事件打字，然後印出 model 最後拿到什麼：
+
+```
+shift-return: question="ab"  submits=1   ← Shift-Return 直接送出，沒有換行
+```
+
+所以改成自己的 `AnchoraAskField`／`AnchoraAskTextView`：Return 與 Shift-Return 在 `keyDown` 裡明確分開判斷，而不是去賭 framework 對 field editor 的處理。換成 NSTextView 之後同一個 harness 給出的是：
+
+```
+shift-return: text=ab<NL>  field=24→40  total=84→94  submits=0
+return:       text=ab<NL>c                            submits=1
+long text:    field=108（上限）          total=162
+cleared:      field=24                   total=84
+```
+
+**高度是回報的，不是 intrinsic 的。** 這個區別在這裡特別重要，因為側欄以前就被 intrinsic size 的協商弄垮過一次。現在是單向的：寬度由側欄給，高度往外送，host 拿去設約束 —— 沒有迴圈可以掉進去。約束優先權放在 required 之下，側欄很短時它會讓出來，而且超過約六行就改成捲動，不讓輸入框吃掉整個側欄。
+
+過程中修掉兩個真的 bug：text container 少了 `autoresizingMask`／`minSize`／`maxSize`／`containerSize`，結果每一行都以無限寬度排版，打再多字量到的都是一行；以及 `textDidChange` 原本也把高度延後回報，打字會慢一行才長高 —— 打字是使用者事件而不是 view update pass，可以直接同步回報。
+
+**CONTEXT 從 86pt 的卡片變成一行。** 那張卡片是整個側欄最貴的一塊，而它顯示的東西多半是你在旁邊 PDF 上已經反白看得到的文字。真正值得那個空間的是 **PDF 本身看不出來的狀態**：OCR 還在跑、抓了一塊區域當影像、整份 PDF 已附上 —— 而那些本來就各自只有一行。
+
+需要看全文的時候（尤其是 OCR 的結果，送出去之前你會想確認它到底讀成什麼）點一下放大鏡，**用 popover 展開**而不是把 header 撐高 —— 這樣 header 維持固定高度，側欄只有一個會動的高度（輸入框）而不是兩個。只有「Anchora 抽取出來的文字」才可以展開，這件事由 `AnchoraSelection` 的每個 factory 自己宣告，不是靠猜字串。
+
+header 從 146pt 降到 78pt，**還給主體 68pt**。
+
+17 個新檢查（325 → 342）：夾限的上下界、NaN 與無限大不准進約束、清空欄位會縮回一行、換掉文字不會動到量到的高度、PDF 文字層的硬換行在摘要裡被收成一行、只有抽取出來的文字可以展開。
+
+**畫面上仍然沒有在真的 app 裡看過。** harness 驗證的是輸入框本身的行為（按鍵、長高、縮回、上限），這部分現在是確定的；但它裝回側欄之後跟 header、分頁列、抽屜擠在一起是什麼樣子還沒看過。
+
+版本 `1.7.1 (16)`；測試 342 個檢查。
+
 ---
 
 ## 目前可用功能
@@ -630,6 +665,8 @@ Study 的歡迎訊息改成描述這個迴圈，否則兩顆新按鈕沒有任�
 - `Study`／`Scientific` 閱讀 profile。快捷列各三顆：Study 是 Explain／Recall／Quiz，Scientific 是 Methods／Figure／Evidence；其餘動作（Study map、Translate、Clinical、Question、Hypothesis）在 ••• 裡。
 - 當頁回饋：`Recall` 對照你憑記憶寫下的一句話，`Quiz` 出 2–3 題並在你作答後逐題批改。
 - 側欄主體可切換 `Chat`／`Map`／`Inbox` 三面，各自使用整個高度。
+- 輸入框 Return 送出、Shift-Return 換行，並隨內容長高（約六行後改為捲動）。
+- CONTEXT 為一行狀態；抽取出來的文字可點開 popover 檢查全文。
 - 雜念收納：⌘⇧J 從任何地方寫一行，記下當時的文件與頁碼；側欄 Inbox 抽屜管理。
 - Study map 與 Paper map 存在本機，重開文件時自動還原。
 - 全域繁體中文／English 回覆語言設定。
@@ -666,6 +703,8 @@ Study 的歡迎訊息改成描述這個迴圈，否則兩顆新按鈕沒有任�
 | 儲存 | Application Support 下的 JSON，原子寫入 | annotation 屬於 PDF；讀書計畫與雜念不屬於，但必須留得住。 |
 | 文件識別 | 檔案路徑雜湊，另存 bookmark | Anchora 會改寫它讀的 PDF，內容雜湊會讓剛建好的 map 變孤兒。 |
 | 全域捕捉 | app 內的 local event monitor | 系統層級熱鍵需要 Input Monitoring 授權，這個 app 沒有別的理由去要。 |
+| 輸入框 | 自訂 NSTextView 而非 SwiftUI 多行 TextField | 後者不分 Shift 一律以 Return 送出，沒有辦法換行。 |
+| 動態高度 | 由 view 量測後回報，host 設約束 | 寬度單向由側欄給，高度往外送，不會形成 intrinsic size 的量測迴圈。 |
 | 發行 | Release + ad-hoc signing | 可直接在本機拖入 Applications；尚未公證，未適合公開散布。 |
 
 ---
@@ -690,8 +729,8 @@ codesign --verify --deep --strict --verbose=2 Distribution/PDFBuddy.app
 ## 發行位置
 
 - Release app：`Distribution/Anchora.app`
-- Release 附件：`Distribution/Anchora-1.7.0-macos-arm64.zip`（8.8 MB，SHA-256 `fa7c6e3b…`）
-- 版本：`1.7.0 (15)`
+- Release 附件：`Distribution/Anchora-1.7.1-macos-arm64.zip`（8.8 MB，SHA-256 `ba9c882c…`）
+- 版本：`1.7.1 (16)`
 - 最低系統：macOS 14.0
 - 大小：約 17 MB
 - Bundle ID：`com.kris.anchora`

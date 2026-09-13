@@ -13,16 +13,23 @@
 
 import SwiftUI
 
+/// Carries the composer's laid-out height out to its AppKit host.
+private struct AnchoraComposerHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0.0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        let next = nextValue()
+        if next > 0.0 {
+            value = next
+        }
+    }
+}
+
 struct AnchoraComposerView: View {
 
     @ObservedObject var model: AnchoraComposerModel
-    @FocusState private var questionFieldFocused: Bool
 
-    /// The host gives this view a fixed height rather than letting it report an
-    /// intrinsic one.  Nothing here wraps, so its height does not depend on its
-    /// width -- but a fixed height keeps that guarantee in the layout instead of
-    /// in an assumption about the content.
-    static let height: CGFloat = 84.0
+    /// The height the host starts with, before anything is typed.
+    static let height: CGFloat = AnchoraComposerModel.minimumHeight
 
     var body: some View {
         VStack(spacing: 6.0) {
@@ -30,9 +37,18 @@ struct AnchoraComposerView: View {
             askBar
             secondaryActions
         }
+        .fixedSize(horizontal: false, vertical: true)
+        // The host still sets this view's height with a constraint; it just
+        // gets the number from here now.  Measuring the laid-out content and
+        // reporting it is not the same as reporting an intrinsic size: the
+        // width comes from the sidebar and is never influenced by what is
+        // measured, so there is no cycle to fall into.
+        .background(GeometryReader { proxy in
+            Color.clear.preference(key: AnchoraComposerHeightKey.self, value: proxy.size.height)
+        })
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .onChange(of: model.focusRequest) {
-            questionFieldFocused = true
+        .onPreferenceChange(AnchoraComposerHeightKey.self) { height in
+            model.reportContentHeight(height)
         }
     }
 
@@ -57,16 +73,37 @@ struct AnchoraComposerView: View {
         .frame(height: 22.0)
     }
 
+    /// Return sends; Shift-Return starts a new line.  A question worth typing
+    /// over several lines -- a list of answers to a quiz, a paragraph recalled
+    /// from memory -- should grow downwards rather than scroll away to the
+    /// right.
     private var askBar: some View {
-        HStack(spacing: 8.0) {
-            TextField(model.placeholder, text: $model.question)
-                .textFieldStyle(.roundedBorder)
-                .focused($questionFieldFocused)
-                .onSubmit { model.onSubmit?() }
+        HStack(alignment: .bottom, spacing: 8.0) {
+            ZStack(alignment: .topLeading) {
+                // NSTextView has no placeholder, and the private attribute for
+                // one is not worth depending on.
+                if model.question.isEmpty {
+                    Text(model.placeholder)
+                        .font(.system(size: 13.0))
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 6.0)
+                        .padding(.vertical, 4.0)
+                        .allowsHitTesting(false)
+                }
+                AnchoraAskField(text: $model.question,
+                                focusRequest: model.focusRequest,
+                                onSubmit: { model.onSubmit?() },
+                                onHeightChange: { model.reportFieldHeight($0) })
+                    .frame(height: model.fieldHeight)
+            }
+            .background(RoundedRectangle(cornerRadius: 6.0, style: .continuous)
+                .fill(Color(nsColor: .textBackgroundColor)))
+            .overlay(RoundedRectangle(cornerRadius: 6.0, style: .continuous)
+                .strokeBorder(Color(nsColor: .separatorColor)))
+
             Button(model.isRequestInFlight ? "Stop" : "Send") {
                 model.onSubmit?()
             }
-            .keyboardShortcut(.return, modifiers: [])
         }
     }
 
