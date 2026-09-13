@@ -647,6 +647,33 @@ header 從 146pt 降到 78pt，**還給主體 68pt**。
 
 版本 `1.7.1 (16)`；測試 342 個檢查。
 
+### 1.7.2 — 啟動時不再是一片空白
+
+沒有帶檔案啟動 Anchora，畫面上什麼都不會出現：沒有視窗、沒有面板，只有選單列和標題列變了。三個人因此卡住，所以這不是他們的問題。
+
+**這是 Skim 上游的行為，而且是刻意的。** `applicationShouldOpenUntitledFile:` 永遠回傳 `NO`，因為 Skim 是閱讀器、不建立未命名文件，預期你從檔案啟動它。那個假設對第一次打開這個 app 的人不成立。同一片空白也發生在「Dock 圖示點一下但沒有任何視窗」的時候 —— 那條路最後也走到同一個 delegate。
+
+改法是把「有沒有東西正在還原」跟「要不要提供開檔面板」拆開：`reopenPreviousSession` 從原本那段邏輯抽出來，回傳有沒有上一次的工作階段可還原；`applicationShouldOpenUntitledFile:` 在沒有的時候回傳 `YES`，`applicationOpenUntitledFile:` 叫出標準的開檔面板。
+
+兩個細節：
+
+- **面板是延後叫出來的。** 直接在 `applicationDidFinishLaunching` 裡跑面板會把啟動流程卡住 —— 包括版本更新時的 release notes —— 直到使用者選了檔案為止。
+- **被問過而拒絕的還原也算「有工作階段」。** 剛按掉「確定要開 20 份文件嗎」的人，不會想接著看到一個開檔面板。
+
+**這次是實際跑起來驗證的**，用 `CGWindowListCopyWindowInfo` 讀視窗清單（只要 bounds 不需要任何授權）：
+
+| 啟動方式 | 結果 |
+| --- | --- |
+| 空白啟動、沒有可還原的工作階段 | `name=Open 880x448` 面板出現，且 release notes 同時也在 —— 確認沒有卡住啟動流程 |
+| 帶著檔案啟動 | 只有文件視窗，沒有面板 |
+| 空白啟動、還原開啟且有工作階段 | 文件還原，**沒有**面板 |
+
+沒有新增自動化測試：這段是 app delegate 的啟動路徑，沒有可以單獨測的 Swift 介面。上面那三種情境是直接觀察行為驗證的，對這個改動來說比單元測試更有力。
+
+沒有做成偏好設定。面板只在「完全空白的啟動」出現，從 Finder 雙擊 PDF 或還原工作階段都不會看到它。
+
+版本 `1.7.2 (17)`；測試 342 個檢查。
+
 ---
 
 ## 目前可用功能
@@ -667,6 +694,7 @@ header 從 146pt 降到 78pt，**還給主體 68pt**。
 - 側欄主體可切換 `Chat`／`Map`／`Inbox` 三面，各自使用整個高度。
 - 輸入框 Return 送出、Shift-Return 換行，並隨內容長高（約六行後改為捲動）。
 - CONTEXT 為一行狀態；抽取出來的文字可點開 popover 檢查全文。
+- 空白啟動（或 Dock 點擊而沒有視窗）時自動叫出開檔面板，不再是一片空白。
 - 雜念收納：⌘⇧J 從任何地方寫一行，記下當時的文件與頁碼；側欄 Inbox 抽屜管理。
 - Study map 與 Paper map 存在本機，重開文件時自動還原。
 - 全域繁體中文／English 回覆語言設定。
@@ -705,6 +733,7 @@ header 從 146pt 降到 78pt，**還給主體 68pt**。
 | 全域捕捉 | app 內的 local event monitor | 系統層級熱鍵需要 Input Monitoring 授權，這個 app 沒有別的理由去要。 |
 | 輸入框 | 自訂 NSTextView 而非 SwiftUI 多行 TextField | 後者不分 Shift 一律以 Return 送出，沒有辦法換行。 |
 | 動態高度 | 由 view 量測後回報，host 設約束 | 寬度單向由側欄給，高度往外送，不會形成 intrinsic size 的量測迴圈。 |
+| 空白啟動 | 沒有可還原的工作階段時叫出開檔面板 | 上游的「什麼都不顯示」對第一次使用的人是純粹的困惑。 |
 | 發行 | Release + ad-hoc signing | 可直接在本機拖入 Applications；尚未公證，未適合公開散布。 |
 
 ---
@@ -729,8 +758,8 @@ codesign --verify --deep --strict --verbose=2 Distribution/PDFBuddy.app
 ## 發行位置
 
 - Release app：`Distribution/Anchora.app`
-- Release 附件：`Distribution/Anchora-1.7.1-macos-arm64.zip`（8.8 MB，SHA-256 `ba9c882c…`）
-- 版本：`1.7.1 (16)`
+- Release 附件：`Distribution/Anchora-1.7.2-macos-arm64.zip`（8.8 MB，SHA-256 `c8faabe6…`）
+- 版本：`1.7.2 (17)`
 - 最低系統：macOS 14.0
 - 大小：約 17 MB
 - Bundle ID：`com.kris.anchora`

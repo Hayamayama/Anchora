@@ -167,42 +167,68 @@ NSString *SKPageLabelsChangedNotification = @"SKPageLabelsChangedNotification";
 
 #pragma mark NSApplication delegate
 
+// Skim is a viewer, so it never creates an untitled document, and answering
+// NO here is what leaves a bare launch showing nothing but a menu bar -- no
+// window, no panel, only the title bar changing. That is reliably baffling to
+// anyone opening the app for the first time rather than double-clicking a PDF.
+// So when there is no previous session on its way back, offer the open panel.
+// This covers clicking the Dock icon with no windows too, which lands here by
+// the same route.
 - (BOOL)applicationShouldOpenUntitledFile:(NSApplication *)sender{
+    BOOL isReopeningSession = NO;
     if (didCheckReopen == NO) {
-        NSUserDefaults *sud = [NSUserDefaults standardUserDefaults];
-        
         didCheckReopen = YES;
-        
-        if ([sud boolForKey:SKReopenLastOpenFilesKey] || [sud boolForKey:SKIsRelaunchKey]) {
-            // just remove this in case opening the last open files crashes the app after a relaunch
-            if ([sud objectForKey:SKIsRelaunchKey]) {
-                [sud removeObjectForKey:SKIsRelaunchKey];
-                [sud synchronize];
-            }
-            
-            SKBookmark *previousSession = [[SKBookmarkController sharedBookmarkController] previousSession];
-            NSUInteger numberOfDocs = [[previousSession children] count];
-            
-            if (numberOfDocs > REOPEN_WARNING_LIMIT) {
-                NSAlert *alert = [[NSAlert alloc] init];
-                [alert setMessageText:[NSString stringWithFormat:NSLocalizedString(@"Are you sure you want to open %lu documents?", @"Message in alert dialog"), (unsigned long)numberOfDocs]];
-                [alert setInformativeText:NSLocalizedString(@"Each document opens in a separate window.", @"Informative text in alert dialog")];
-                [alert addButtonWithTitle:NSLocalizedString(@"Cancel", @"Button title")];
-                [alert addButtonWithTitle:NSLocalizedString(@"Open", @"Button title")];
-                
-                if (NSAlertFirstButtonReturn == [alert runModal])
-                    previousSession = nil;
-            }
-            
-            if (previousSession)
-                [[NSDocumentController sharedDocumentController] openDocumentWithBookmark:previousSession completionHandler:^(NSDocument *document, BOOL documentWasAlreadyOpen, NSError *error){
-                    if (document == nil && error && [error isUserCancelledError] == NO)
-                        [NSApp presentError:error];
-                }];
+        isReopeningSession = [self reopenPreviousSession];
+    }
+    return isReopeningSession == NO;
+}
+
+- (BOOL)applicationOpenUntitledFile:(NSApplication *)sender{
+    // Deferred: the launch path calls this, and running the panel from inside
+    // applicationDidFinishLaunching would hold up the rest of it -- release
+    // notes included -- until a file was chosen.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [[NSDocumentController sharedDocumentController] openDocument:nil];
+    });
+    return YES;
+}
+
+/// Returns whether a previous session was there to restore, which includes the
+/// case where the reader was asked and said no: having just declined to reopen
+/// twenty documents, they do not then want an open panel.
+- (BOOL)reopenPreviousSession{
+    NSUserDefaults *sud = [NSUserDefaults standardUserDefaults];
+
+    if ([sud boolForKey:SKReopenLastOpenFilesKey] || [sud boolForKey:SKIsRelaunchKey]) {
+        // just remove this in case opening the last open files crashes the app after a relaunch
+        if ([sud objectForKey:SKIsRelaunchKey]) {
+            [sud removeObjectForKey:SKIsRelaunchKey];
+            [sud synchronize];
         }
+        
+        SKBookmark *previousSession = [[SKBookmarkController sharedBookmarkController] previousSession];
+        NSUInteger numberOfDocs = [[previousSession children] count];
+        
+        if (numberOfDocs > REOPEN_WARNING_LIMIT) {
+            NSAlert *alert = [[NSAlert alloc] init];
+            [alert setMessageText:[NSString stringWithFormat:NSLocalizedString(@"Are you sure you want to open %lu documents?", @"Message in alert dialog"), (unsigned long)numberOfDocs]];
+            [alert setInformativeText:NSLocalizedString(@"Each document opens in a separate window.", @"Informative text in alert dialog")];
+            [alert addButtonWithTitle:NSLocalizedString(@"Cancel", @"Button title")];
+            [alert addButtonWithTitle:NSLocalizedString(@"Open", @"Button title")];
+            
+            if (NSAlertFirstButtonReturn == [alert runModal])
+                previousSession = nil;
+        }
+        
+        if (previousSession)
+            [[NSDocumentController sharedDocumentController] openDocumentWithBookmark:previousSession completionHandler:^(NSDocument *document, BOOL documentWasAlreadyOpen, NSError *error){
+                if (document == nil && error && [error isUserCancelledError] == NO)
+                    [NSApp presentError:error];
+            }];
+        return numberOfDocs > 0;
     }
     return NO;
-}    
+}
 
 - (void)applicationWillFinishLaunching:(NSNotification *)aNotification {
     [NSImage makeImages];
@@ -216,8 +242,10 @@ NSString *SKPageLabelsChangedNotification = @"SKPageLabelsChangedNotification";
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification{
     NSUserDefaults *sud = [NSUserDefaults standardUserDefaults];
     
-    if (didCheckReopen == NO && [[NSApp windows] count] == 0 && [(SKDocumentController *)[NSDocumentController sharedDocumentController] openedFile] == NO)
-        [self applicationShouldOpenUntitledFile:NSApp];
+    if (didCheckReopen == NO && [[NSApp windows] count] == 0 && [(SKDocumentController *)[NSDocumentController sharedDocumentController] openedFile] == NO) {
+        if ([self applicationShouldOpenUntitledFile:NSApp])
+            [self applicationOpenUntitledFile:NSApp];
+    }
     didCheckReopen = YES;
     [sud removeObjectForKey:SKIsRelaunchKey];
     
