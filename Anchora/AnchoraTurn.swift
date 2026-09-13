@@ -20,6 +20,13 @@ import PDFKit
 // these values free of Skim, and repeatedly walking a selection's ranges out
 // of the hot path.
 
+/// Which navigator, if any, a turn's answer belongs in.
+@objc public enum AnchoraMapKind: Int {
+    case none = 0
+    case paper = 1
+    case study = 2
+}
+
 @objc(AnchoraSelection)
 public final class AnchoraSelection: NSObject {
 
@@ -141,9 +148,10 @@ public final class AnchoraTurn: NSObject {
     @objc public let pageRect: NSRect
     @objc public let imageDataURL: String?
     @objc public let sourcePageIndexes: [NSNumber]
-    /// A paper map is the one full-document answer rendered into the navigator
-    /// instead of the transcript.
-    @objc public let isPaperMap: Bool
+    /// A map answer is rendered into the navigator instead of the transcript:
+    /// it is far too long to read as a chat bubble.
+    @objc public let mapKind: AnchoraMapKind
+    @objc public var isMap: Bool { mapKind != .none }
 
     /// The current phase, shown in the streaming bubble until output arrives.
     @objc public var status: String?
@@ -162,7 +170,7 @@ public final class AnchoraTurn: NSObject {
                       pageRect: NSRect,
                       imageDataURL: String?,
                       sourcePageIndexes: [NSNumber],
-                      isPaperMap: Bool,
+                      mapKind: AnchoraMapKind,
                       status: String?) {
         // A turn that was asked about a text selection is anchored to that
         // selection; one asked about a region or a whole page is anchored to
@@ -175,7 +183,7 @@ public final class AnchoraTurn: NSObject {
         self.pageRect = hasTextSelection ? .zero : pageRect
         self.imageDataURL = imageDataURL
         self.sourcePageIndexes = sourcePageIndexes
-        self.isPaperMap = isPaperMap
+        self.mapKind = mapKind
         self.status = status
         super.init()
     }

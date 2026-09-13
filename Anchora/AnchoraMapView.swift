@@ -1,5 +1,5 @@
 //
-//  AnchoraPaperMapView.swift
+//  AnchoraMapView.swift
 //  Anchora
 //
 //  The Paper Map navigator: pick a section, read it, and jump back into the
@@ -8,9 +8,9 @@
 
 import SwiftUI
 
-struct AnchoraPaperMapView: View {
+struct AnchoraMapView: View {
 
-    @ObservedObject var model: AnchoraPaperMapModel
+    @ObservedObject var model: AnchoraMapModel
     /// Page labels for the current document, refreshed by the AppKit host.
     var pageLabels: [String]
 
@@ -35,17 +35,17 @@ struct AnchoraPaperMapView: View {
 
     private var header: some View {
         HStack(spacing: 8.0) {
-            Text("PAPER MAP")
+            Text(model.title)
                 .font(.system(size: 10.0, weight: .bold))
                 .foregroundStyle(.secondary)
-            Text("Click a Source quote to highlight it in the PDF")
+            Text(model.legend)
                 .font(.system(size: 10.0))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .help("Source quotes jump to, and select, their matching PDF text. Evidence labels separate direct results, author interpretation, inference, and what remains unproven.")
             Spacer(minLength: 4.0)
-            Button(model.isExpanded ? "Hide" : "Show Paper Map") {
+            Button(model.isExpanded ? "Hide" : "Show") {
                 model.setExpanded(model.isExpanded == false)
             }
             .controlSize(.small)
@@ -89,11 +89,13 @@ struct AnchoraPaperMapView: View {
         ScrollView(.vertical) {
             Group {
                 if let section = model.selectedSection {
-                    Text(model.attributedDetail(for: section, pageLabels: pageLabels))
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    Text("")
+                    if model.rendersMarkdown {
+                        AnchoraMarkdownText(markdown: section.text, bodySize: 12.5)
+                    } else {
+                        Text(model.attributedDetail(for: section, pageLabels: pageLabels))
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

@@ -1,5 +1,5 @@
 //
-//  AnchoraPaperMapModel.swift
+//  AnchoraMapModel.swift
 //  Anchora
 //
 //  State for the Paper Map navigator, plus the rich-text rendering of a
@@ -11,10 +11,34 @@ import Foundation
 import Combine
 import SwiftUI
 
-@objc(AnchoraPaperMapModel)
-public final class AnchoraPaperMapModel: NSObject, ObservableObject {
+@objc(AnchoraMapModel)
+public final class AnchoraMapModel: NSObject, ObservableObject {
 
-    @Published public private(set) var sections: [AnchoraPaperMapSection] = []
+    @Published public private(set) var sections: [AnchoraMapSection] = []
+    @Published public private(set) var kind: AnchoraMapKind = .none
+
+    /// What this map is, shown on the card.
+    public var title: String {
+        switch kind {
+        case .study: return "STUDY MAP"
+        case .paper: return "PAPER MAP"
+        case .none: return "MAP"
+        }
+    }
+
+    public var legend: String {
+        switch kind {
+        case .study: return "Pick a block, then jump to its pages"
+        case .paper: return "Click a Source quote to highlight it in the PDF"
+        case .none: return ""
+        }
+    }
+
+    /// A study plan is ordinary prose and lists, so it reads far better as
+    /// rendered Markdown.  A paper map is not: its body carries the evidence
+    /// labels and Source quote links, whose ranges are computed against the
+    /// raw text and would not survive being reflowed.
+    public var rendersMarkdown: Bool { kind == .study }
     @Published public var selectedIndex: Int = 0
     @Published public private(set) var isExpanded: Bool = false
 
@@ -37,15 +61,16 @@ public final class AnchoraPaperMapModel: NSObject, ObservableObject {
         return isExpanded ? 248.0 : 34.0
     }
 
-    public var selectedSection: AnchoraPaperMapSection? {
+    public var selectedSection: AnchoraMapSection? {
         sections.indices.contains(selectedIndex) ? sections[selectedIndex] : nil
     }
 
     // MARK: - Mutation
 
-    @objc public func present(_ sections: [AnchoraPaperMapSection]) {
+    @objc public func present(_ sections: [AnchoraMapSection], kind: AnchoraMapKind) {
         guard sections.isEmpty == false else { return }
         self.sections = sections
+        self.kind = kind
         selectedIndex = 0
         isExpanded = true
         onLayoutChange?()
@@ -53,6 +78,7 @@ public final class AnchoraPaperMapModel: NSObject, ObservableObject {
 
     @objc public func clear() {
         sections = []
+        kind = .none
         selectedIndex = 0
         isExpanded = false
         onLayoutChange?()
@@ -87,7 +113,7 @@ public final class AnchoraPaperMapModel: NSObject, ObservableObject {
     /// Builds the displayed section text: evidence labels emphasised, and each
     /// Source quote turned into an `anchora-pdf:` link carrying its own text
     /// and cited page.
-    public func attributedDetail(for section: AnchoraPaperMapSection, pageLabels: [String]) -> AttributedString {
+    public func attributedDetail(for section: AnchoraMapSection, pageLabels: [String]) -> AttributedString {
         let text = section.text
         var attributed = AttributedString(text)
         attributed.font = .system(size: 12.5)
@@ -100,7 +126,7 @@ public final class AnchoraPaperMapModel: NSObject, ObservableObject {
             Range(nsRange, in: attributed)
         }
 
-        for label in AnchoraPaperMapModel.evidenceLabels {
+        for label in AnchoraMapModel.evidenceLabels {
             let pattern = #"(?im)^\s*(?:[-•]\s*)?"# + NSRegularExpression.escapedPattern(for: label) + #"\s*:?[ \t]*"#
             guard let expression = try? NSRegularExpression(pattern: pattern) else { continue }
             for match in expression.matches(in: text, range: fullRange) {
@@ -110,7 +136,7 @@ public final class AnchoraPaperMapModel: NSObject, ObservableObject {
             }
         }
 
-        if let expression = try? NSRegularExpression(pattern: AnchoraPaperMapModel.quotePattern) {
+        if let expression = try? NSRegularExpression(pattern: AnchoraMapModel.quotePattern) {
             for match in expression.matches(in: text, range: fullRange) {
                 let quote = nsText.substring(with: match.range(at: 1))
                     .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -119,7 +145,7 @@ public final class AnchoraPaperMapModel: NSObject, ObservableObject {
                 let pageIndexes = AnchoraPaperMap.pageIndexes(inText: citation, pageLabels: pageLabels)
                 guard quote.isEmpty == false,
                       let pageIndex = pageIndexes.first?.intValue,
-                      let url = AnchoraPaperMapModel.quoteURL(quote: quote, pageIndex: pageIndex),
+                      let url = AnchoraMapModel.quoteURL(quote: quote, pageIndex: pageIndex),
                       let attributedRange = range(match.range(at: 1))
                 else { continue }
                 attributed[attributedRange].link = url
@@ -148,7 +174,7 @@ public final class AnchoraPaperMapModel: NSObject, ObservableObject {
     /// Handles a click on a rendered quote link.  Returns false for anything
     /// that is not one of our own links, so real URLs still open normally.
     func handle(url: URL) -> Bool {
-        guard url.scheme == AnchoraPaperMapModel.quoteScheme else { return false }
+        guard url.scheme == AnchoraMapModel.quoteScheme else { return false }
         let components = url.pathComponents.filter { $0 != "/" }
         guard components.count >= 2, let pageIndex = Int(components[0]) else { return true }
 

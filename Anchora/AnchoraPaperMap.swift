@@ -10,20 +10,6 @@
 
 import Foundation
 
-@objc(AnchoraPaperMapSection)
-public final class AnchoraPaperMapSection: NSObject {
-    @objc public let title: String
-    @objc public let text: String
-    /// Zero-based page indexes cited anywhere in this section, in first-seen order.
-    @objc public let pageIndexes: [NSNumber]
-
-    init(title: String, text: String, pageIndexes: [NSNumber]) {
-        self.title = title
-        self.text = text
-        self.pageIndexes = pageIndexes
-    }
-}
-
 @objc(AnchoraPaperMap)
 public final class AnchoraPaperMap: NSObject {
 
@@ -118,7 +104,7 @@ public final class AnchoraPaperMap: NSObject {
     /// Splits a paper map response on its expected H2 headings.  A response
     /// that does not follow the structure still yields one section, so the
     /// navigator never swallows an answer.
-    @objc public static func sections(fromResponse response: String, pageLabels: [String]) -> [AnchoraPaperMapSection] {
+    @objc public static func sections(fromResponse response: String, pageLabels: [String]) -> [AnchoraMapSection] {
         guard response.isEmpty == false else { return [] }
 
         let nsResponse = response as NSString
@@ -135,7 +121,7 @@ public final class AnchoraPaperMap: NSObject {
         }
         headings.sort { $0.range.location < $1.range.location }
 
-        var sections: [AnchoraPaperMapSection] = []
+        var sections: [AnchoraMapSection] = []
         for (index, heading) in headings.enumerated() {
             let start = NSMaxRange(heading.range)
             let end = (index + 1 < headings.count) ? headings[index + 1].range.location : nsResponse.length
@@ -144,13 +130,13 @@ public final class AnchoraPaperMap: NSObject {
             if text.isEmpty {
                 text = emptySectionText
             }
-            sections.append(AnchoraPaperMapSection(title: heading.definition.title,
+            sections.append(AnchoraMapSection(title: heading.definition.title,
                                                    text: text,
                                                    pageIndexes: pageIndexes(inText: text, pageLabels: pageLabels)))
         }
 
         if sections.isEmpty {
-            sections.append(AnchoraPaperMapSection(title: "Paper map response",
+            sections.append(AnchoraMapSection(title: "Paper map response",
                                                    text: response,
                                                    pageIndexes: pageIndexes(inText: response, pageLabels: pageLabels)))
         }

@@ -215,6 +215,8 @@
 		AC00000000000000000000CA /* AnchoraPrompts.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000066 /* AnchoraPrompts.swift */; };
 		AC00000000000000000000CB /* AnchoraPaperMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000067 /* AnchoraPaperMap.swift */; };
 		AC00000000000000000000CC /* AnchoraResponsesClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000068 /* AnchoraResponsesClient.swift */; };
+		AC0000000000000000000640 /* AnchoraStudyMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC00000000000000000005DC /* AnchoraStudyMap.swift */; };
+		AC0000000000000000000578 /* AnchoraMapSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000514 /* AnchoraMapSection.swift */; };
 		AC00000000000000000004B0 /* AnchoraHeaderModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC000000000000000000044C /* AnchoraHeaderModel.swift */; };
 		AC00000000000000000004B1 /* AnchoraHeaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC000000000000000000044D /* AnchoraHeaderView.swift */; };
 		AC00000000000000000003E8 /* AnchoraComposerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000384 /* AnchoraComposerModel.swift */; };
@@ -226,8 +228,8 @@
 		AC0000000000000000000259 /* AnchoraMarkdownText.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC00000000000000000001F5 /* AnchoraMarkdownText.swift */; };
 		AC0000000000000000000190 /* AnchoraChatModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC000000000000000000012C /* AnchoraChatModel.swift */; };
 		AC0000000000000000000191 /* AnchoraChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC000000000000000000012D /* AnchoraChatView.swift */; };
-		AC0000000000000000000192 /* AnchoraPaperMapModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC000000000000000000012E /* AnchoraPaperMapModel.swift */; };
-		AC0000000000000000000193 /* AnchoraPaperMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC000000000000000000012F /* AnchoraPaperMapView.swift */; };
+		AC0000000000000000000192 /* AnchoraMapModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC000000000000000000012E /* AnchoraMapModel.swift */; };
+		AC0000000000000000000193 /* AnchoraMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC000000000000000000012F /* AnchoraMapView.swift */; };
 		AC0000000000000000000194 /* AnchoraHosting.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000130 /* AnchoraHosting.swift */; };
 		CE8BF069115F859A0029020F /* LeftSideView.xib in Resources */ = {isa = PBXBuildFile; fileRef = CE8BF068115F859A0029020F /* LeftSideView.xib */; };
 		CE8BF070115F892A0029020F /* RightSideView.xib in Resources */ = {isa = PBXBuildFile; fileRef = CE8BF06F115F892A0029020F /* RightSideView.xib */; };
@@ -1119,6 +1121,8 @@
 		AC0000000000000000000066 /* AnchoraPrompts.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraPrompts.swift; sourceTree = "<group>"; };
 		AC0000000000000000000067 /* AnchoraPaperMap.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraPaperMap.swift; sourceTree = "<group>"; };
 		AC0000000000000000000068 /* AnchoraResponsesClient.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraResponsesClient.swift; sourceTree = "<group>"; };
+		AC00000000000000000005DC /* AnchoraStudyMap.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraStudyMap.swift; sourceTree = "<group>"; };
+		AC0000000000000000000514 /* AnchoraMapSection.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraMapSection.swift; sourceTree = "<group>"; };
 		AC000000000000000000044C /* AnchoraHeaderModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraHeaderModel.swift; sourceTree = "<group>"; };
 		AC000000000000000000044D /* AnchoraHeaderView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraHeaderView.swift; sourceTree = "<group>"; };
 		AC0000000000000000000384 /* AnchoraComposerModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraComposerModel.swift; sourceTree = "<group>"; };
@@ -1130,8 +1134,8 @@
 		AC00000000000000000001F5 /* AnchoraMarkdownText.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraMarkdownText.swift; sourceTree = "<group>"; };
 		AC000000000000000000012C /* AnchoraChatModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraChatModel.swift; sourceTree = "<group>"; };
 		AC000000000000000000012D /* AnchoraChatView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraChatView.swift; sourceTree = "<group>"; };
-		AC000000000000000000012E /* AnchoraPaperMapModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraPaperMapModel.swift; sourceTree = "<group>"; };
-		AC000000000000000000012F /* AnchoraPaperMapView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraPaperMapView.swift; sourceTree = "<group>"; };
+		AC000000000000000000012E /* AnchoraMapModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraMapModel.swift; sourceTree = "<group>"; };
+		AC000000000000000000012F /* AnchoraMapView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraMapView.swift; sourceTree = "<group>"; };
 		AC0000000000000000000130 /* AnchoraHosting.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraHosting.swift; sourceTree = "<group>"; };
 		AC0000000000000000000069 /* Anchora-Bridging-Header.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Anchora-Bridging-Header.h; sourceTree = "<group>"; };
 		CE8BF068115F859A0029020F /* LeftSideView.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = LeftSideView.xib; sourceTree = "<group>"; };
@@ -1535,6 +1539,8 @@
 				AC0000000000000000000066 /* AnchoraPrompts.swift */,
 				AC0000000000000000000067 /* AnchoraPaperMap.swift */,
 				AC0000000000000000000068 /* AnchoraResponsesClient.swift */,
+				AC00000000000000000005DC /* AnchoraStudyMap.swift */,
+				AC0000000000000000000514 /* AnchoraMapSection.swift */,
 				AC000000000000000000044C /* AnchoraHeaderModel.swift */,
 				AC000000000000000000044D /* AnchoraHeaderView.swift */,
 				AC0000000000000000000384 /* AnchoraComposerModel.swift */,
@@ -1546,8 +1552,8 @@
 				AC00000000000000000001F5 /* AnchoraMarkdownText.swift */,
 				AC000000000000000000012C /* AnchoraChatModel.swift */,
 				AC000000000000000000012D /* AnchoraChatView.swift */,
-				AC000000000000000000012E /* AnchoraPaperMapModel.swift */,
-				AC000000000000000000012F /* AnchoraPaperMapView.swift */,
+				AC000000000000000000012E /* AnchoraMapModel.swift */,
+				AC000000000000000000012F /* AnchoraMapView.swift */,
 				AC0000000000000000000130 /* AnchoraHosting.swift */,
 				AC0000000000000000000069 /* Anchora-Bridging-Header.h */,
 			);
@@ -3030,6 +3036,8 @@
 				AC00000000000000000000CA /* AnchoraPrompts.swift in Sources */,
 				AC00000000000000000000CB /* AnchoraPaperMap.swift in Sources */,
 				AC00000000000000000000CC /* AnchoraResponsesClient.swift in Sources */,
+				AC0000000000000000000640 /* AnchoraStudyMap.swift in Sources */,
+				AC0000000000000000000578 /* AnchoraMapSection.swift in Sources */,
 				AC00000000000000000004B0 /* AnchoraHeaderModel.swift in Sources */,
 				AC00000000000000000004B1 /* AnchoraHeaderView.swift in Sources */,
 				AC00000000000000000003E8 /* AnchoraComposerModel.swift in Sources */,
@@ -3041,8 +3049,8 @@
 				AC0000000000000000000259 /* AnchoraMarkdownText.swift in Sources */,
 				AC0000000000000000000190 /* AnchoraChatModel.swift in Sources */,
 				AC0000000000000000000191 /* AnchoraChatView.swift in Sources */,
-				AC0000000000000000000192 /* AnchoraPaperMapModel.swift in Sources */,
-				AC0000000000000000000193 /* AnchoraPaperMapView.swift in Sources */,
+				AC0000000000000000000192 /* AnchoraMapModel.swift in Sources */,
+				AC0000000000000000000193 /* AnchoraMapView.swift in Sources */,
 				AC0000000000000000000194 /* AnchoraHosting.swift in Sources */,
 				CE9768831161195C008DCB8F /* SKDownloadPreferenceController.m in Sources */,
 				CE121AC81180644A00951425 /* SKScriptMenu.m in Sources */,
@@ -3873,7 +3881,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = CE17EE460E24ED7C00DE06EA /* Skim-App.xcconfig */;
 			buildSettings = {
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 13;
 			};
 			name = Debug;
 		};
@@ -3881,7 +3889,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = CE17EE460E24ED7C00DE06EA /* Skim-App.xcconfig */;
 			buildSettings = {
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 13;
 			};
 			name = Release;
 		};

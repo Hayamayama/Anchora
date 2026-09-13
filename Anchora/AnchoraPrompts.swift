@@ -155,7 +155,7 @@ public final class AnchoraPrompts: NSObject {
         case .scientific:
             return ["Paper", "Question", "Hypothesis", "Methods", "Figure", "Evidence"]
         case .study:
-            return ["Explain", "Translate", "Clinical"]
+            return ["Study map", "Explain", "Translate", "Clinical"]
         }
     }
 
@@ -169,7 +169,8 @@ public final class AnchoraPrompts: NSObject {
                     "Axes, units, controls, and what the figure can establish",
                     "An evidence chain: direct result, author interpretation, inference, and what remains unproven"]
         case .study:
-            return ["Explain this step by step",
+            return ["Plan how to study this whole PDF: what order, what to focus on, what to skip",
+                    "Explain this step by step",
                     "Translate into the configured response language",
                     "Clinical relevance and practical implications"]
         }
@@ -214,12 +215,17 @@ public final class AnchoraPrompts: NSObject {
         }
     }
 
+    /// Tag 0 is the whole-document study map; the rest act on the selection.
+    @objc public static let studyMapActionTag = 0
+
     @objc public static func studyQuickActionPrompt(tag: Int) -> String {
         switch tag {
-        case 1:
+        case 0:
+            return studyMapPrompt
+        case 2:
             return "Translate this into the configured response language. Preserve technical terms where helpful; if the source is "
                 + "already in that language, provide a clear language-native paraphrase instead."
-        case 2:
+        case 3:
             return "Explain the clinical relevance and practical implications of this."
         default:
             return "Explain this clearly, step by step, for study."
@@ -241,6 +247,30 @@ public final class AnchoraPrompts: NSObject {
         be 8-28 words copied exactly from the cited page, so it can be selected in the PDF. Use the PDF text and visuals, cite the \
         relevant page for every PDF-grounded claim, and say 'not stated or unclear' rather than guessing.
         """
+
+    /// A study plan, not a summary.  The reader has a deck or a chapter in
+    /// front of them and wants to know how to work through it.
+    @objc public static let studyMapPrompt = """
+        Design a study plan for this document: how to learn it efficiently and well. This is not a summary of the content.
+
+        First work out what kind of material this is -- lecture slides, a textbook chapter, a handout, a problem set -- and what         a reader is expected to be able to do once they have studied it.
+
+        Then return between five and ten Markdown H2 sections, numbered, in the order they should be studied. Name each heading         for what is learned there rather than copying the slide titles. Under each heading write a Markdown bullet list, one bullet per line, of exactly these:
+
+        - Pages: the pages it covers, written as [PDF p. X] or [PDF p. X-Y], using only page labels that exist in this document
+        - Goal: what the reader should be able to do after this block, phrased as an action
+        - Key terms: the few terms that must be understood, in `backticks`
+        - How to study it: what to actually do with these pages -- read closely, skim, redraw the diagram, memorise, work examples
+        - Trap: the mistake people usually make here, when there is an obvious one
+
+        Order the blocks by what depends on what, not by the order the pages happen to fall in, and say so when you deliberately         send the reader out of order.
+
+        Finish with two more H2 sections: one giving the shortest useful path for a reader who is short of time, naming the pages         to read; and one listing questions the reader should be able to answer from memory afterwards, as a self-test.
+
+        Cite pages for everything you say the document covers, and say it is not covered rather than inventing material.
+        """
+
+    @objc public static let studyMapTitle = "Build a study map"
 
     // MARK: - Summaries
 

@@ -6,7 +6,9 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 out=$(mktemp -d)
 trap 'rm -rf "$out"' EXIT
 swiftc -O -parse-as-library \
+    "$root/Anchora/AnchoraMapSection.swift" \
     "$root/Anchora/AnchoraPaperMap.swift" \
+    "$root/Anchora/AnchoraStudyMap.swift" \
     "$root/Anchora/AnchoraMarkdown.swift" \
     "$root/Anchora/AnchoraTextQuality.swift" \
     "$root/Anchora/AnchoraTurn.swift" \

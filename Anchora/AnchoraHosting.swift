@@ -44,14 +44,14 @@ public final class AnchoraHosting: NSObject {
     }
 
     /// `pageLabels` is captured when the view is built; the host rebuilds the
-    /// root view through `updatePaperMapView(_:model:pageLabels:)` when a new
+    /// root view through `updateMapView(_:model:pageLabels:)` when a new
     /// document is opened.
-    @objc public static func paperMapView(model: AnchoraPaperMapModel, pageLabels: [String]) -> NSView {
-        hostingView(AnchoraPaperMapView(model: model, pageLabels: pageLabels))
+    @objc public static func mapView(model: AnchoraMapModel, pageLabels: [String]) -> NSView {
+        hostingView(AnchoraMapView(model: model, pageLabels: pageLabels))
     }
 
-    @objc public static func updatePaperMapView(_ view: NSView, model: AnchoraPaperMapModel, pageLabels: [String]) {
-        guard let hosting = view as? NSHostingView<AnchoraPaperMapView> else { return }
-        hosting.rootView = AnchoraPaperMapView(model: model, pageLabels: pageLabels)
+    @objc public static func updateMapView(_ view: NSView, model: AnchoraMapModel, pageLabels: [String]) {
+        guard let hosting = view as? NSHostingView<AnchoraMapView> else { return }
+        hosting.rootView = AnchoraMapView(model: model, pageLabels: pageLabels)
     }
 }

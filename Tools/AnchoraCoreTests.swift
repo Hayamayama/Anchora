@@ -180,7 +180,7 @@ func testPromptsFollowSettings() {
     expect(verified.contains("not stated or unclear"), "the scientific profile keeps its hedging rule")
 
     expect(AnchoraPrompts.quickActionTitles(profile: .scientific).count == 6, "Scientific has six quick actions")
-    expect(AnchoraPrompts.quickActionTitles(profile: .study).count == 3, "Study has three quick actions")
+    expect(AnchoraPrompts.quickActionTitles(profile: .study).count == 4, "Study has four quick actions")
     expectEqual(AnchoraPrompts.documentSummaryPrompt(profile: .scientific), AnchoraPrompts.paperMapPrompt,
                 "Summarize-this-PDF in Scientific is the paper map prompt")
 
@@ -431,11 +431,11 @@ func testAnswersKeepTheirOwnTurn() {
     let first = AnchoraTurn(question: "Explain this", conversationUserText: "Explain this",
                             selection: nil, hasTextSelection: false, page: nil, pageRect: .zero,
                             imageDataURL: nil, sourcePageIndexes: [NSNumber(value: 3)],
-                            isPaperMap: false, status: nil)
+                            mapKind: .none, status: nil)
     let second = AnchoraTurn(question: "And this?", conversationUserText: "And this?",
                              selection: nil, hasTextSelection: false, page: nil, pageRect: .zero,
                              imageDataURL: nil, sourcePageIndexes: [NSNumber(value: 8)],
-                             isPaperMap: false, status: nil)
+                             mapKind: .none, status: nil)
 
     model.beginStreamingMessage(status: "…", sourceLabel: "p. 3", sourcePageIndex: NSNumber(value: 2), turn: first)
     model.appendStreamedText("first answer")
@@ -577,6 +577,81 @@ func testMoreActionsMenuLocation() {
            "the menu lands in the top-right quadrant, where the button is")
 }
 
+// MARK: - Study map
+
+/// A study plan has as many blocks as the material needs, with headings in
+/// whatever language the reader chose, so it cannot be pinned to fixed
+/// headings the way a paper map is.
+func testStudyMapSplitsOnAnyHeading() {
+    let response = """
+    ## 1. 呼吸系統的整體架構
+    Pages: [PDF p. 4-8]
+    Goal: 說出氣流從鼻腔到肺泡的路徑
+
+    ## 2. 胸廓與呼吸肌
+    Pages: [PDF p. 19]
+    Trap: 把桶柄效應和水泵柄效應搞混
+
+    ### 3. 肋膜腔
+    Pages: [PDF p. 13-14]
+
+    ## 時間不夠時
+    只讀 [PDF p. 19]
+    """
+    let sections = AnchoraStudyMap.sections(fromResponse: response, pageLabels: (1...30).map(String.init))
+    expectEqual(sections.count, 4, "every heading becomes a block, however many there are")
+    expectEqual(sections.map(\.title),
+                ["1. 呼吸系統的整體架構", "2. 胸廓與呼吸肌", "3. 肋膜腔", "時間不夠時"],
+                "headings keep their numbering, which is the reading order")
+    expectEqual(sections[0].pageIndexes.map(\.intValue), [3, 4, 5, 6, 7],
+                "a page range in a block resolves to its pages")
+    expectEqual(sections[3].pageIndexes.map(\.intValue), [18],
+                "so does the short path at the end")
+    expect(sections[1].text.contains("Trap:"), "a block keeps its own body")
+}
+
+func testStudyMapTitleIsPlainText() {
+    let sections = AnchoraStudyMap.sections(fromResponse: "## **1. Gas exchange**\nbody", pageLabels: ["1"])
+    expectEqual(sections.map(\.title), ["1. Gas exchange"],
+                "a decorated heading is shown as plain text in the picker")
+}
+
+func testStudyMapWithoutHeadings() {
+    let sections = AnchoraStudyMap.sections(fromResponse: "read it front to back [PDF p. 2]", pageLabels: ["1", "2"])
+    expectEqual(sections.count, 1, "a plan with no headings is still shown")
+    expectEqual(sections[0].pageIndexes.map(\.intValue), [1], "and still resolves its citations")
+    expectEqual(AnchoraStudyMap.sections(fromResponse: "", pageLabels: ["1"]).count, 0,
+                "an empty response yields nothing")
+}
+
+/// The study map is the one study action that works on the whole document.
+func testStudyProfileActions() {
+    let titles = AnchoraPrompts.quickActionTitles(profile: .study)
+    expectEqual(titles.count, 4, "the study profile has four actions")
+    expectEqual(titles.first, "Study map", "and the whole-document one comes first")
+    expectEqual(AnchoraPrompts.quickActionTooltips(profile: .study).count, titles.count,
+                "every action explains itself")
+    expectEqual(AnchoraPrompts.studyQuickActionPrompt(tag: AnchoraPrompts.studyMapActionTag),
+                AnchoraPrompts.studyMapPrompt,
+                "the first action asks for the study map")
+    expect(AnchoraPrompts.studyQuickActionPrompt(tag: 1).contains("step by step"),
+           "Explain kept its prompt after the tags shifted")
+    expect(AnchoraPrompts.studyQuickActionPrompt(tag: 2).contains("Translate"),
+           "so did Translate")
+    expect(AnchoraPrompts.studyQuickActionPrompt(tag: 3).contains("clinical"),
+           "and Clinical")
+}
+
+/// It plans how to study the document; it does not summarise it.
+func testStudyMapPromptAsksForAPlan() {
+    let prompt = AnchoraPrompts.studyMapPrompt
+    expect(prompt.contains("not a summary"), "the plan is explicitly not a summary")
+    expect(prompt.contains("[PDF p. X]"), "pages are cited in the form the navigator resolves")
+    expect(prompt.contains("H2"), "blocks are headings, which is what the parser splits on")
+    expect(prompt.lowercased().contains("depends on"), "the order is by dependency, not page order")
+    expect(prompt.lowercased().contains("short of time"), "there is a short path for a reader in a hurry")
+}
+
 // MARK: - Capture geometry
 
 /// Two things have to be undone before a page rectangle matches what drawing
@@ -687,7 +762,7 @@ func testSelectionContextStates() {
 func testTurnCannotPinWithoutAnAnchorOrAnAnswer() {
     let turn = AnchoraTurn(question: "Explain this", conversationUserText: "Explain this",
                            selection: nil, hasTextSelection: false, page: nil, pageRect: .zero, imageDataURL: nil,
-                           sourcePageIndexes: [], isPaperMap: false, status: "Waiting…")
+                           sourcePageIndexes: [], mapKind: .none, status: "Waiting…")
     expect(turn.canPin == false, "a turn with no answer cannot be pinned")
     turn.receivedOutput = true
     expect(turn.canPin == false, "an answer with nowhere in the PDF to anchor it cannot be pinned")
@@ -696,12 +771,12 @@ func testTurnCannotPinWithoutAnAnchorOrAnAnswer() {
 func testTurnAccumulatesItsAnswer() {
     let turn = AnchoraTurn(question: "Explain this", conversationUserText: "Explain this",
                            selection: nil, hasTextSelection: false, page: nil, pageRect: .zero, imageDataURL: nil,
-                           sourcePageIndexes: [NSNumber(value: 3)], isPaperMap: true, status: nil)
+                           sourcePageIndexes: [NSNumber(value: 3)], mapKind: .paper, status: nil)
     turn.response.append("first ")
     turn.response.append("second")
     expectEqual(turn.response as String, "first second", "streamed deltas accumulate on the turn")
     expectEqual(turn.sourcePageIndexes.map(\.intValue), [3], "the turn keeps the pages it was asked about")
-    expect(turn.isPaperMap, "the turn remembers it is a paper map")
+    expect(turn.isMap && turn.mapKind == .paper, "the turn remembers which navigator its answer belongs in")
 }
 
 // MARK: - Run
@@ -729,6 +804,11 @@ enum AnchoraCoreTests {
         testAnswersKeepTheirOwnTurn()
         testMessagesWithNothingToPin()
         testMoreActionsMenuLocation()
+        testStudyMapSplitsOnAnyHeading()
+        testStudyMapTitleIsPlainText()
+        testStudyMapWithoutHeadings()
+        testStudyProfileActions()
+        testStudyMapPromptAsksForAPlan()
         testMarkdownBlockKinds()
         testMarkdownNestedList()
         testMarkdownHandlesPartialStreamedText()

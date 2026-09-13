@@ -63,7 +63,7 @@ static NSString * const SKAIAssistantName = @"Anchora";
 // UI was being stabilized.  A paper map needs room for methods, results,
 // figures, caveats, and page citations; its renderer is now throttled.
 static const NSUInteger SKAIStandardMaximumOutputTokens = 8000;
-static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
+static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
 
 @interface SKRightSideViewController ()
 @property (nonatomic, nullable, strong) AnchoraHeaderModel *aiHeaderModel;
@@ -73,10 +73,10 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
 // their position and height in the sidebar; everything inside — wrapped text
 // height, bubble growth, scrolling, link handling — belongs to the framework.
 @property (nonatomic, nullable, strong) AnchoraChatModel *aiChatModel;
-@property (nonatomic, nullable, strong) AnchoraPaperMapModel *aiPaperMapModel;
+@property (nonatomic, nullable, strong) AnchoraMapModel *aiMapModel;
 @property (nonatomic, nullable, strong) NSView *aiChatView;
-@property (nonatomic, nullable, strong) NSView *aiPaperMapCard;
-@property (nonatomic, nullable, strong) NSLayoutConstraint *aiPaperMapHeightConstraint;
+@property (nonatomic, nullable, strong) NSView *aiMapCard;
+@property (nonatomic, nullable, strong) NSLayoutConstraint *aiMapHeightConstraint;
 // The reader's live selection, and the snapshot the in-flight answer was
 // asked about.  Keeping these as two values rather than sixteen parallel
 // properties is what stops the two from being confused.
@@ -89,6 +89,10 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
 @property (nonatomic, nullable, strong) NSPopover *selectionActionPopover;
 @property (nonatomic, strong) NSMutableArray<NSDictionary<NSString *, NSString *> *> *aiConversation;
 @property (nonatomic) BOOL webVerificationEnabled;
+// Set just before a whole-document request starts and consumed as its turn is
+// built.  A map is always a whole-document answer, so this never has to
+// survive longer than that one call.
+@property (nonatomic) AnchoraMapKind aiPendingMapKind;
 @end
 
 @implementation SKRightSideViewController
@@ -138,14 +142,14 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     }
 }
 
-- (void)updatePaperMapCardHeight {
-    CGFloat height = [self.aiPaperMapModel preferredHeight];
-    [self.aiPaperMapCard setHidden:height <= 0.0];
+- (void)updateMapCardHeight {
+    CGFloat height = [self.aiMapModel preferredHeight];
+    [self.aiMapCard setHidden:height <= 0.0];
     // A hidden map must be exactly zero-height: NSView.hidden does not remove
     // Auto Layout constraints. The visible state lowers this priority so it
     // yields gracefully in a very short sidebar.
-    self.aiPaperMapHeightConstraint.priority = height > 0.0 ? NSLayoutPriorityDefaultHigh : NSLayoutPriorityRequired;
-    self.aiPaperMapHeightConstraint.constant = height;
+    self.aiMapHeightConstraint.priority = height > 0.0 ? NSLayoutPriorityDefaultHigh : NSLayoutPriorityRequired;
+    self.aiMapHeightConstraint.constant = height;
 }
 
 - (NSArray<NSString *> *)pdfPageLabels {
@@ -183,11 +187,15 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
 }
 
 - (void)clearPaperMap {
-    [self.aiPaperMapModel clear];
+    [self.aiMapModel clear];
 }
 
-- (void)presentPaperMapFromResponse:(NSString *)response {
-    [self.aiPaperMapModel present:[AnchoraPaperMap sectionsFromResponse:response ?: @"" pageLabels:[self pdfPageLabels]]];
+- (void)presentMapFromResponse:(NSString *)response kind:(AnchoraMapKind)kind {
+    NSArray<NSString *> *pageLabels = [self pdfPageLabels];
+    NSArray<AnchoraMapSection *> *sections = kind == AnchoraMapKindStudy
+        ? [AnchoraStudyMap sectionsFromResponse:response ?: @"" pageLabels:pageLabels]
+        : [AnchoraPaperMap sectionsFromResponse:response ?: @"" pageLabels:pageLabels];
+    [self.aiMapModel present:sections kind:kind];
 }
 
 - (void)appendChatMessageFrom:(NSString *)sender text:(NSString *)text sourcePageIndexes:(NSArray<NSNumber *> *)sourcePageIndexes {
@@ -321,10 +329,10 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     // area.  It deliberately does not sit inside the chat view: large
     // scientific answers must never feed back into chat sizing while a PDF is
     // opening or a response is streaming.
-    AnchoraPaperMapModel *paperMapModel = [[AnchoraPaperMapModel alloc] init];
-    NSView *paperMapCard = [AnchoraHosting paperMapViewWithModel:paperMapModel pageLabels:[self pdfPageLabels]];
-    [paperMapCard setHidden:YES];
-    [rootView addSubview:paperMapCard];
+    AnchoraMapModel *mapModel = [[AnchoraMapModel alloc] init];
+    NSView *mapCard = [AnchoraHosting mapViewWithModel:mapModel pageLabels:[self pdfPageLabels]];
+    [mapCard setHidden:YES];
+    [rootView addSubview:mapCard];
 
     AnchoraChatModel *chatModel = [[AnchoraChatModel alloc] init];
     NSView *chatView = [AnchoraHosting chatViewWithModel:chatModel];
@@ -338,12 +346,12 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     [rootView addSubview:composer positioned:NSWindowAbove relativeTo:chatView];
 
     [NSLayoutConstraint activateConstraints:@[
-        [paperMapCard.leadingAnchor constraintEqualToAnchor:header.leadingAnchor],
-        [paperMapCard.trailingAnchor constraintEqualToAnchor:header.trailingAnchor],
-        [paperMapCard.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:8.0],
+        [mapCard.leadingAnchor constraintEqualToAnchor:header.leadingAnchor],
+        [mapCard.trailingAnchor constraintEqualToAnchor:header.trailingAnchor],
+        [mapCard.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:8.0],
         [chatView.leadingAnchor constraintEqualToAnchor:rootView.leadingAnchor constant:8.0],
         [chatView.trailingAnchor constraintEqualToAnchor:rootView.trailingAnchor constant:-8.0],
-        [chatView.topAnchor constraintEqualToAnchor:paperMapCard.bottomAnchor constant:8.0],
+        [chatView.topAnchor constraintEqualToAnchor:mapCard.bottomAnchor constant:8.0],
         [chatView.bottomAnchor constraintEqualToAnchor:composer.topAnchor constant:-8.0],
         [chatView.heightAnchor constraintGreaterThanOrEqualToConstant:120.0],
         [composer.leadingAnchor constraintEqualToAnchor:rootView.leadingAnchor constant:12.0],
@@ -356,11 +364,11 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     ]];
 
     self.aiView = rootView;
-    self.aiPaperMapCard = paperMapCard;
-    self.aiPaperMapModel = paperMapModel;
-    self.aiPaperMapHeightConstraint = [paperMapCard.heightAnchor constraintEqualToConstant:0.0];
-    self.aiPaperMapHeightConstraint.priority = NSLayoutPriorityRequired;
-    self.aiPaperMapHeightConstraint.active = YES;
+    self.aiMapCard = mapCard;
+    self.aiMapModel = mapModel;
+    self.aiMapHeightConstraint = [mapCard.heightAnchor constraintEqualToConstant:0.0];
+    self.aiMapHeightConstraint.priority = NSLayoutPriorityRequired;
+    self.aiMapHeightConstraint.active = YES;
     self.aiHeaderModel = headerModel;
     self.aiHeaderView = header;
     self.aiChatView = chatView;
@@ -380,18 +388,18 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     [chatModel setOnPinTextNote:^(AnchoraTurn *turn) {
         [weakSelf pinTurn:turn asTextNote:YES];
     }];
-    [paperMapModel setOnOpenPage:^(NSInteger pageIndex) {
+    [mapModel setOnOpenPage:^(NSInteger pageIndex) {
         [weakSelf goToPDFPageAtIndex:pageIndex];
     }];
-    [paperMapModel setOnOpenQuote:^(NSString *quote, NSInteger pageIndex) {
+    [mapModel setOnOpenQuote:^(NSString *quote, NSInteger pageIndex) {
         [weakSelf selectPaperMapQuote:quote onPageAtIndex:pageIndex];
     }];
-    [paperMapModel setPageLabelProvider:^NSString *(NSInteger pageIndex) {
+    [mapModel setPageLabelProvider:^NSString *(NSInteger pageIndex) {
         NSArray<NSString *> *labels = [weakSelf pdfPageLabels];
         return (pageIndex >= 0 && (NSUInteger)pageIndex < [labels count]) ? [labels objectAtIndex:(NSUInteger)pageIndex] : @"";
     }];
-    [paperMapModel setOnLayoutChange:^{
-        [weakSelf updatePaperMapCardHeight];
+    [mapModel setOnLayoutChange:^{
+        [weakSelf updateMapCardHeight];
     }];
     [composerModel setOnSubmit:^{
         [weakSelf askAI:nil];
@@ -627,6 +635,14 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
 
 - (void)performQuickActionAtIndex:(NSInteger)tag {
     if ([self isScientificReadingProfile] == NO) {
+        // The study map plans the whole document, so unlike the other study
+        // actions it needs no selection.
+        if (tag == [AnchoraPrompts studyMapActionTag]) {
+            [self startWholeDocumentRequestWithQuestion:[AnchoraPrompts studyMapPrompt]
+                                        displayQuestion:[AnchoraPrompts studyMapTitle]
+                                                mapKind:AnchoraMapKindStudy];
+            return;
+        }
         [self.aiComposerModel setQuestionText:[AnchoraPrompts studyQuickActionPromptWithTag:tag]];
         [self askAI:nil];
         return;
@@ -645,7 +661,7 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     // selection when present; otherwise they remain useful by using the
     // complete paper (or the visible page for Figure).
     if (tag == 0) {
-        [self startWholeDocumentRequestWithQuestion:question displayQuestion:displayQuestion];
+        [self startWholeDocumentRequestWithQuestion:question displayQuestion:displayQuestion mapKind:AnchoraMapKindPaper];
     } else if (hasDirectContext) {
         [self.aiComposerModel setQuestionText:question];
         [self askAI:nil];
@@ -831,6 +847,11 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
         sourcePageIndexes = [self.aiTurn sourcePageIndexes] ?: @[];
     NSString *sourceDescription = [self requestSourceDescriptionForPageIndexes:sourcePageIndexes];
 
+    // Whichever map this is was decided by the action the reader chose, rather
+    // than inferred from the wording of the question.
+    AnchoraMapKind mapKind = [fileDataURL length] > 0 ? self.aiPendingMapKind : AnchoraMapKindNone;
+    self.aiPendingMapKind = AnchoraMapKindNone;
+
     AnchoraRequest *request = [[AnchoraRequest alloc] init];
     [request setModel:[self selectedAIModel]];
     [request setInstructions:[AnchoraPrompts systemInstructionsWithProfile:[[AnchoraSettings sharedSettings] readingProfile]
@@ -842,17 +863,14 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
     [request setFileName:fileName];
     [request setPriorMessages:self.aiConversation ?: @[]];
     [request setWebSearchEnabled:self.webVerificationEnabled];
-    [request setMaxOutputTokens:([fileDataURL length] && [self isScientificReadingProfile]) ? SKAIPaperMapMaximumOutputTokens : SKAIStandardMaximumOutputTokens];
+    // A map has to lay out the whole document, so a short answer would cut it
+    // off mid-structure.
+    [request setMaxOutputTokens:mapKind != AnchoraMapKindNone ? SKAIMapMaximumOutputTokens : SKAIStandardMaximumOutputTokens];
     // A full-paper map can legitimately take longer than a selected sentence.
     // It remains cancellable through the Stop button in the composer.
     [request setTimeout:[fileDataURL length] ? 300.0 : 120.0];
 
     [self.aiClient cancel];
-    // A Paper Map is the sole full-document response rendered into the
-    // navigator. All other requests remain normal chat replies.
-    BOOL isPaperMap = [self isScientificReadingProfile] && [fileDataURL length] > 0 &&
-        ([displayQuestion rangeOfString:@"Paper Map" options:NSCaseInsensitiveSearch].location != NSNotFound ||
-         [question rangeOfString:@"Paper map" options:NSCaseInsensitiveSearch].location != NSNotFound);
     NSString *conversationUserText = [sourceText length] ? [NSString stringWithFormat:@"%@\n\nPDF context used:\n%@", displayQuestion, [sourceText substringToIndex:MIN((NSUInteger)6000, [sourceText length])]] : displayQuestion;
     self.aiTurn = [[AnchoraTurn alloc] initWithQuestion:displayQuestion
                                    conversationUserText:conversationUserText
@@ -862,7 +880,7 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
                                                pageRect:pageRect
                                            imageDataURL:imageDataURL
                                       sourcePageIndexes:sourcePageIndexes
-                                             isPaperMap:isPaperMap
+                                                mapKind:mapKind
                                                  status:[AnchoraPrompts preparingStatusWithHasFile:[fileDataURL length] > 0 hasImage:[imageDataURL length] > 0]];
     [self recordAIConversationRole:@"user" text:conversationUserText];
     [self appendChatMessageFrom:@"You" text:displayQuestion];
@@ -923,6 +941,11 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
 }
 
 - (void)startWholeDocumentRequestWithQuestion:(NSString *)question displayQuestion:(NSString *)displayQuestion {
+    [self startWholeDocumentRequestWithQuestion:question displayQuestion:displayQuestion mapKind:AnchoraMapKindNone];
+}
+
+- (void)startWholeDocumentRequestWithQuestion:(NSString *)question displayQuestion:(NSString *)displayQuestion mapKind:(AnchoraMapKind)mapKind {
+    self.aiPendingMapKind = mapKind;
     PDFDocument *document = [mainController pdfDocument];
     NSUInteger pageCount = [document pageCount];
     if (pageCount == 0) {
@@ -958,7 +981,8 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
 - (IBAction)summarizeDocument:(id)sender {
     AnchoraReadingProfile profile = [[AnchoraSettings sharedSettings] readingProfile];
     [self startWholeDocumentRequestWithQuestion:[AnchoraPrompts documentSummaryPromptWithProfile:profile]
-                                displayQuestion:[AnchoraPrompts documentSummaryDisplayTitleWithProfile:profile]];
+                                displayQuestion:[AnchoraPrompts documentSummaryDisplayTitleWithProfile:profile]
+                                        mapKind:profile == AnchoraReadingProfileScientific ? AnchoraMapKindPaper : AnchoraMapKindNone];
 }
 
 - (BOOL)configureOpenAIAPIKey:(id)sender {
@@ -1003,8 +1027,8 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
         // paper analysis.
         if ([text length] && [[turn response] length] == 0)
             [[turn response] setString:text];
-        if ([turn isPaperMap]) {
-            [self presentPaperMapFromResponse:[turn response]];
+        if ([turn isMap]) {
+            [self presentMapFromResponse:[turn response] kind:[turn mapKind]];
             [self.aiChatModel removeStreamingMessage];
         }
         if ([webSources count]) {
@@ -1026,8 +1050,8 @@ static const NSUInteger SKAIPaperMapMaximumOutputTokens = 16000;
 - (void)resetAIConversationForNewDocument {
     [self.aiClient cancel];
     self.aiClient = nil;
-    if (self.aiPaperMapCard)
-        [AnchoraHosting updatePaperMapView:self.aiPaperMapCard model:self.aiPaperMapModel pageLabels:[self pdfPageLabels]];
+    if (self.aiMapCard)
+        [AnchoraHosting updateMapView:self.aiMapCard model:self.aiMapModel pageLabels:[self pdfPageLabels]];
     self.aiConversation = [NSMutableArray array];
     self.aiTurn = nil;
     [self clearPaperMap];

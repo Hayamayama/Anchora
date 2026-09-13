@@ -533,6 +533,26 @@ Release 建置 0 錯誤。`SKPDFView.m` 有 23 個警告，全部是 Skim 既有
 
 **README 的安裝說明改寫**為兩條路徑：一行 Terminal 指令（下載、安裝、清除 quarantine），以及 Finder + 系統設定的手動流程。前者明確說明它清除的是什麼、以及為什麼只該對信任的來源這樣做。
 
+### 1.5.0 — Study map
+
+拿到一份教材時想知道「該怎麼讀才有效率」，所以 Study 模式多了一顆按鈕，讓模型分析整份 PDF 並設計讀法。
+
+**它產生的是計畫而不是摘要。** prompt 先要求模型判斷這是什麼性質的教材、讀完之後應該要會做什麼，再依「什麼相依於什麼」而不是頁面先後排出 5–10 個區塊，每塊給：涵蓋頁碼（以 `[PDF p. X]` 形式，才能跳頁）、讀完要能做到什麼、必須掌握的術語、這幾頁**該怎麼處理**（精讀／略過／重畫圖／背／做題），以及這裡常見的誤解。最後兩節分別是「時間不夠時的最短路徑」與「事後應該能默答的問題」。
+
+**按鈕而不是選單項目。** 與 Scientific 的 `Paper` 對稱：Study 的快捷列變成四顆，`Study map` 排第一，不需要反白選取、直接分析整份文件。其餘三顆維持針對選取內容。
+
+**Navigator 一般化。** 原本的 Paper Map navigator 形狀正好相同（選一節 → 讀 → 跳頁），差別只在解析規則：Paper Map 綁死八個英文標題，Study map 的區塊數不固定、標題還是使用者選的語言。因此：
+
+- `AnchoraPaperMapSection` → `AnchoraMapSection`，獨立成一個 Foundation-only 的檔案；`AnchoraPaperMapModel`／`View` → `AnchoraMapModel`／`AnchoraMapView`。解析器 `AnchoraPaperMap` 維持原名，因為它確實只解析 paper map。
+- 新增 `AnchoraStudyMap`：切在任何層級的標題上，保留模型給的順序（那個順序就是答案），標題去掉 Markdown 裝飾但保留編號。
+- Model 依 `AnchoraMapKind` 自行決定卡片標題、說明文字與**內容如何渲染**：study map 用 Markdown 渲染，paper map 維持既有的 evidence 標示與 Source quote 連結 —— 後者的範圍是對原始文字算出來的，重排之後會失效。
+
+**判斷是哪種 map 不再靠猜字串。** 原本用 `displayQuestion` 裡有沒有「Paper Map」字樣來判斷；現在由讀者按下的動作直接決定，`AnchoraTurn` 帶 `mapKind`。輸出 token 上限也改為「是 map 就給 16,000」，不再綁在 Scientific profile 上。
+
+21 個新測試：任意標題的切分、裝飾標題轉純文字、沒有標題時的 fallback、Study profile 的四個動作與 tag 位移後各自仍對應正確的 prompt，以及 prompt 本身確實要求計畫而非摘要。
+
+版本 `1.5.0 (13)`；測試 194 個檢查。
+
 ---
 
 ## 目前可用功能
@@ -604,15 +624,14 @@ codesign --verify --deep --strict --verbose=2 Distribution/PDFBuddy.app
 ## 發行位置
 
 - Release app：`Distribution/Anchora.app`
-- Release 附件：`Distribution/Anchora-1.4.2-macos-arm64.zip`（8.6 MB）
-- 版本：`1.4.2 (12)`
+- Release 附件：`Distribution/Anchora-1.5.0-macos-arm64.zip`（8.7 MB）
+- 版本：`1.5.0 (13)`
 - 最低系統：macOS 14.0
 - 大小：約 17 MB
 - Bundle ID：`com.kris.anchora`
 
 ## 後續候選項目（尚未實作）
 
-- 以「主題 → 頁碼」呈現的 PDF 學習地圖。
 - Paper Map 段落內容的 Markdown 渲染（需與既有的 evidence／quote 範圍標示整合）。
 - Markdown 表格支援。
 - 取得 Developer ID 憑證並實際跑通公證流程（腳本已就緒，尚未驗證）。

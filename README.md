@@ -50,6 +50,7 @@ The key is stored only in your macOS Keychain. It is never saved inside a PDF or
 - `Web verify`: search and check current claims, then show the web sources used.
 - `Pin latest answer`: add the latest AI answer as an editable anchor note in the PDF.
 - Under any answer: `Copy` it as plain text, `Pin as note` (a compact anchored note) or `Pin as text` (a text note visible on the page). Older answers keep their own PDF anchor, so a question asked three turns ago can still be pinned where it belongs.
+- `Study map`: ask for a plan for working through the whole document — what order, what to focus on, what to skip, and what to be able to answer afterwards. Study profile only; it needs no selection.
 - `•••`: summarize the current page or the complete PDF.
 
 ## Build from source
@@ -106,8 +107,8 @@ hardened runtime.
 Current release asset checksum:
 
 ```text
-Anchora-1.4.2-macos-arm64.zip
-SHA-256: 24656c0efe624f095299d316b103ea52848605c85ac39a67edc63330885b4486
+Anchora-1.5.0-macos-arm64.zip
+SHA-256: 59444ff7b126bbde61fb6c1e1740be8149fd33d97f907b573078748e77cc13a5
 ```
 
 ## Run the tests
