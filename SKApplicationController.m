@@ -263,13 +263,7 @@ NSString *SKPageLabelsChangedNotification = @"SKPageLabelsChangedNotification";
         [sud setObject:versionString forKey:SKLastVersionLaunchedKey];
     }
 	
-    NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
-    [nc addObserver:self selector:@selector(registerCurrentDocuments:) 
-                             name:SKDocumentDidShowNotification object:nil];
-    [nc addObserver:self selector:@selector(registerCurrentDocuments:) 
-                             name:SKDocumentControllerDidRemoveDocumentNotification object:nil];
-    
-    currentDocumentsTimer = [NSTimer scheduledTimerWithTimeInterval:CURRENTDOCUMENTSETUP_INTERVAL target:self selector:@selector(registerCurrentDocuments:) userInfo:nil repeats:YES];
+    [self startTrackingOpenDocuments];
     
     // kHIDRemoteModeExclusiveAuto lets the HIDRemote handle activation when the app gets or loses focus
     if ([sud boolForKey:SKEnableAppleRemoteKey]) {
@@ -287,6 +281,55 @@ NSString *SKPageLabelsChangedNotification = @"SKPageLabelsChangedNotification";
 // we don't want to reopen last open files when re-activating the app
 - (BOOL)applicationShouldHandleReopen:(NSApplication *)theApplication hasVisibleWindows:(BOOL)flag {
     return flag;
+}
+
+/// Watches which documents are open, so the last session can be restored.
+/// Separate from launch because a quit that gets called off has to put it back:
+/// SKApplication announces that it is terminating before anyone is asked
+/// whether it may.
+- (void)startTrackingOpenDocuments {
+    NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
+    [nc removeObserver:self name:SKDocumentDidShowNotification object:nil];
+    [nc removeObserver:self name:SKDocumentControllerDidRemoveDocumentNotification object:nil];
+    [nc addObserver:self selector:@selector(registerCurrentDocuments:)
+                             name:SKDocumentDidShowNotification object:nil];
+    [nc addObserver:self selector:@selector(registerCurrentDocuments:)
+                             name:SKDocumentControllerDidRemoveDocumentNotification object:nil];
+
+    [currentDocumentsTimer invalidate];
+    currentDocumentsTimer = [NSTimer scheduledTimerWithTimeInterval:CURRENTDOCUMENTSETUP_INTERVAL target:self selector:@selector(registerCurrentDocuments:) userInfo:nil repeats:YES];
+}
+
+// Closing a window asks whether to save; quitting did not, and an annotation
+// made and not yet written to the PDF was simply gone -- no sheet, no warning,
+// the file untouched on disk.  A document-based app is supposed to review its
+// unsaved documents on the way out on its own, and this one did not, so it is
+// asked for explicitly rather than relied upon.
+- (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender {
+    [[NSDocumentController sharedDocumentController]
+        reviewUnsavedDocumentsWithAlertTitle:nil
+                                 cancellable:YES
+                                    delegate:self
+                        didReviewAllSelector:@selector(documentController:didReviewAll:contextInfo:)
+                                 contextInfo:NULL];
+    return NSTerminateLater;
+}
+
+- (void)documentController:(NSDocumentController *)controller didReviewAll:(BOOL)didReviewAll contextInfo:(void *)contextInfo {
+    // By the time a quit is called off, applicationStartsTerminating: has
+    // already pulled down the document tracking, and without this the rest of
+    // the session would quietly stop recording which files were open.
+    if (didReviewAll == NO)
+        [self startTrackingOpenDocuments];
+    // With nothing unsaved to review this runs synchronously, inside
+    // applicationShouldTerminate: and therefore before it has returned
+    // NSTerminateLater -- so replying here directly is replying to a question
+    // that has not been asked yet, and the app waits for an answer that
+    // already came. Quitting a document with no unsaved changes hung on
+    // exactly that.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [NSApp replyToApplicationShouldTerminate:didReviewAll];
+    });
 }
 
 - (void)applicationStartsTerminating:(NSNotification *)aNotification {

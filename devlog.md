@@ -674,6 +674,31 @@ header 從 146pt 降到 78pt，**還給主體 68pt**。
 
 版本 `1.7.2 (17)`；測試 342 個檢查。
 
+### 1.7.3 — ⌘Q 不再靜悄悄地丟掉你的標註
+
+按 ⌘Q 直接就走了，即使文件還有沒存的修改。這是**真正的資料遺失**，不是小瑕疵。
+
+**先確認它真的會掉，而不是猜。** 造一份拋棄式 PDF、用 app 自己的 AppleScript 介面加一個 anchored note，`modified` 從 `false` 變 `true`，然後退出 —— 沒有任何詢問、程序消失、檔案還是原本的 390 bytes、裡面沒有 `Annot`、也沒有 `.skim` 旁檔。標註就是不見了。
+
+**關掉文件會問，退出不會。** 同一份文件執行「關閉」時有一個 260×238 的儲存對話框跳出來，所以 `canCloseDocumentWithDelegate:` 這條路是好的 —— 壞的只有退出那一條。document-based app 本來就應該在離開時自動檢查未儲存的文件，這個 app 沒有，程式碼裡也找不到任何東西覆寫它（沒有 `applicationShouldTerminate:`、沒有 `NSTerminateNow`、`autosavesInPlace` 是 `NO`）。既然不能依賴，就明確地自己要求：`applicationShouldTerminate:` 呼叫 `reviewUnsavedDocumentsWithAlertTitle:` 並回傳 `NSTerminateLater`。
+
+**過程中自己製造又修掉一個 bug，是測出來的。** 第一版在回呼裡直接 `replyToApplicationShouldTerminate:`，結果**沒有未儲存變更時整個 app 掛住不退出**：沒有東西要檢查的時候，那個回呼是**同步**執行的 —— 它跑在 `applicationShouldTerminate:` 裡面，也就是在它回傳 `NSTerminateLater` 之前。等於在問題被問出來之前就先回答，然後 app 就永遠在等一個已經來過的答案。把回覆丟到 main queue 的下一輪就解決了。
+
+**取消退出要把狀態放回去。** `SKApplication` 在任何人被詢問之前就先廣播「開始終止」，而 `applicationStartsTerminating:` 已經把追蹤開啟文件的 observer 和 timer 拆掉了。在有 review 之前退出永遠不會被取消，所以這件事從來不重要；現在會了。因此把那段抽成 `startTrackingOpenDocuments`，取消時重新裝回去，否則這個 session 剩下的時間都會安靜地不再記錄哪些檔案開著。
+
+四種情況都實際跑過驗證（用 `CGWindowListCopyWindowInfo` 讀視窗清單，不需要任何授權）：
+
+| 情況 | 結果 |
+| --- | --- |
+| 沒有修改，直接退出 | 乾淨退出，不會卡住 |
+| **有未儲存修改，退出** | **儲存對話框跳出，app 停在那裡等** |
+| `quit saving yes` | 存檔（390 → 13,746 bytes，`Annot` 寫進去了）後退出 |
+| `quit saving no` | 丟棄並乾淨退出，檔案維持原樣 |
+
+**沒有驗到的：** 對話框上按「取消」之後 observer 有沒有正確裝回去。按按鈕需要輔助使用權限，那不值得為了這件事去要。這條路是推理出來的，不是觀察到的。
+
+版本 `1.7.3 (18)`；測試 342 個檢查（這次沒有新增自動化測試：這是 app delegate 的終止路徑，沒有可以單獨測的 Swift 介面）。
+
 ---
 
 ## 目前可用功能
@@ -695,6 +720,7 @@ header 從 146pt 降到 78pt，**還給主體 68pt**。
 - 輸入框 Return 送出、Shift-Return 換行，並隨內容長高（約六行後改為捲動）。
 - CONTEXT 為一行狀態；抽取出來的文字可點開 popover 檢查全文。
 - 空白啟動（或 Dock 點擊而沒有視窗）時自動叫出開檔面板，不再是一片空白。
+- 退出時若有未儲存的修改會詢問，不再靜悄悄地丟掉標註。
 - 雜念收納：⌘⇧J 從任何地方寫一行，記下當時的文件與頁碼；側欄 Inbox 抽屜管理。
 - Study map 與 Paper map 存在本機，重開文件時自動還原。
 - 全域繁體中文／English 回覆語言設定。
@@ -734,6 +760,7 @@ header 從 146pt 降到 78pt，**還給主體 68pt**。
 | 輸入框 | 自訂 NSTextView 而非 SwiftUI 多行 TextField | 後者不分 Shift 一律以 Return 送出，沒有辦法換行。 |
 | 動態高度 | 由 view 量測後回報，host 設約束 | 寬度單向由側欄給，高度往外送，不會形成 intrinsic size 的量測迴圈。 |
 | 空白啟動 | 沒有可還原的工作階段時叫出開檔面板 | 上游的「什麼都不顯示」對第一次使用的人是純粹的困惑。 |
+| 退出檢查 | 明確實作 `applicationShouldTerminate:` | 自動的未儲存檢查在這個 app 裡沒有發生，⌘Q 會直接丟掉標註。 |
 | 發行 | Release + ad-hoc signing | 可直接在本機拖入 Applications；尚未公證，未適合公開散布。 |
 
 ---
@@ -758,8 +785,8 @@ codesign --verify --deep --strict --verbose=2 Distribution/PDFBuddy.app
 ## 發行位置
 
 - Release app：`Distribution/Anchora.app`
-- Release 附件：`Distribution/Anchora-1.7.2-macos-arm64.zip`（8.8 MB，SHA-256 `c8faabe6…`）
-- 版本：`1.7.2 (17)`
+- Release 附件：`Distribution/Anchora-1.7.3-macos-arm64.zip`（8.8 MB，SHA-256 `258f657d…`）
+- 版本：`1.7.3 (18)`
 - 最低系統：macOS 14.0
 - 大小：約 17 MB
 - Bundle ID：`com.kris.anchora`
