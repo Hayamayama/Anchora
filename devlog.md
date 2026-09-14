@@ -699,6 +699,33 @@ header 從 146pt 降到 78pt，**還給主體 68pt**。
 
 版本 `1.7.3 (18)`；測試 342 個檢查（這次沒有新增自動化測試：這是 app delegate 的終止路徑，沒有可以單獨測的 Swift 介面）。
 
+### 1.7.4 — 輸入法組字中的 Return，以及追問之後不能 Pin
+
+課堂上實際使用回報的兩個問題，兩個都確認過才修。
+
+**打「為什麼RA與頸椎問題有關」，送出去的只有「為什麼RA」。** 這是 1.7.1 自訂輸入框帶進來的，而且比「截斷」更嚴重 —— 送出去的問題本身就是殘缺的，所以模型回答的是一個你沒問過的問題。
+
+中文與日文輸入法用 **Return 來確認候選字**，但 `keyDown` 無條件把 Return 攔下來拿去送出，於是組字中（marked text）的那一段被整個丟掉，送出的是最後一次已確認的內容。在 harness 裡用 `setMarkedText` 重現得一模一樣：
+
+```
+composing: displayed=a與頸椎  marked=true  binding=a
+after Return while composing: submits 1 -> 2, binding=a
+```
+
+修法是 `hasMarkedText()` 為真時不攔截，把 Return 交還給輸入法。修完之後同一個情境 `submits 1 -> 1`，而一般的 Return 送出與 Shift-Return 換行都不受影響。
+
+harness 沒辦法假造真實輸入法的「確認」動作（它背後沒有真的組字 session），所以**被驗證的是「組字中不再送出」這件事**；確認之後文字正確落地要靠真的輸入法。
+
+**追問之後 Pin latest answer 會變灰。** 不是偶發 —— 只要是**沒有重新選取文字**就問的問題都不能 pin，所以一段對話裡第一個問題之後幾乎都不能。
+
+原因是 `AnchoraTurn.canPin` 要求有東西可以掛：`receivedOutput && (hasTextSelection || page != nil)`。追問走的 `AnchoraSelection.empty` 兩者都沒有，於是那個回答沒有任何可以附著的位置。
+
+修法是追問時把**讀者當下所在的頁面**當作錨點交進去 —— 那就是他們問這個問題時人在的地方。有文字選取時 `AnchoraTurn` 本來就會忽略傳進來的 page（一個 turn 不會同時掛在選取與頁面上），所以這個 fallback 不會影響既有行為。
+
+5 個新檢查（342 → 347）：掛在頁面上的已回答 turn 可以 pin、答案還沒到時仍然不行、掛在選取上的 turn 不會同時掛在頁面上而且照樣可以 pin。
+
+版本 `1.7.4 (19)`；測試 347 個檢查。
+
 ---
 
 ## 目前可用功能
@@ -785,8 +812,8 @@ codesign --verify --deep --strict --verbose=2 Distribution/PDFBuddy.app
 ## 發行位置
 
 - Release app：`Distribution/Anchora.app`
-- Release 附件：`Distribution/Anchora-1.7.3-macos-arm64.zip`（8.8 MB，SHA-256 `258f657d…`）
-- 版本：`1.7.3 (18)`
+- Release 附件：`Distribution/Anchora-1.7.4-macos-arm64.zip`（8.8 MB，SHA-256 `4f923709…`）
+- 版本：`1.7.4 (19)`
 - 最低系統：macOS 14.0
 - 大小：約 17 MB
 - Bundle ID：`com.kris.anchora`

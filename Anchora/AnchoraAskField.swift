@@ -152,7 +152,11 @@ final class AnchoraAskTextView: NSTextView {
 
     override func keyDown(with event: NSEvent) {
         let isReturn = event.keyCode == 36 || event.keyCode == 76
-        if isReturn {
+        // While an input method is composing, Return belongs to it: it is how
+        // a Chinese or Japanese candidate is accepted. Taking it here sent the
+        // question with the composing characters thrown away -- typing
+        // "為什麼RA與頸椎問題有關" and sending "為什麼RA".
+        if isReturn && hasMarkedText() == false {
             if event.modifierFlags.contains(.shift) {
                 insertNewlineIgnoringFieldEditor(nil)
             } else {

@@ -1,5 +1,6 @@
 import Foundation
 import CoreGraphics
+import PDFKit
 
 // Behavioural tests for Anchora's Swift core: the paper map parser, the
 // prompt/parser contract, settings persistence, and the chat transcript model.
@@ -1086,6 +1087,33 @@ func testTurnCannotPinWithoutAnAnchorOrAnAnswer() {
     expect(turn.canPin == false, "an answer with nowhere in the PDF to anchor it cannot be pinned")
 }
 
+/// A follow-up question carries no selection of its own, so the page the
+/// reader is on is handed in as the anchor.  Without it every answer after
+/// the first in a conversation was unpinnable, which is what the sidebar was
+/// actually doing.
+func testAnAnswerAnchoredToAPageCanBePinned() {
+    let page = PDFPage()
+    let turn = AnchoraTurn(question: "And why is that?", conversationUserText: "And why is that?",
+                           selection: nil, hasTextSelection: false, page: page,
+                           pageRect: CGRect(x: 0, y: 0, width: 600, height: 800), imageDataURL: nil,
+                           sourcePageIndexes: [], mapKind: .none, status: nil)
+    expect(turn.canPin == false, "still not while the answer is on its way")
+    turn.receivedOutput = true
+    expect(turn.canPin, "an answered follow-up anchors to the page it was asked on")
+    expect(turn.page === page, "and keeps that page")
+
+    // A text selection anchors to itself; the page passed alongside it is
+    // deliberately dropped, so handing one in cannot produce a turn anchored
+    // to both.
+    let selected = AnchoraTurn(question: "Explain this", conversationUserText: "Explain this",
+                               selection: nil, hasTextSelection: true, page: page,
+                               pageRect: CGRect(x: 0, y: 0, width: 600, height: 800), imageDataURL: nil,
+                               sourcePageIndexes: [], mapKind: .none, status: nil)
+    expect(selected.page == nil, "a turn anchored to a selection is not also anchored to a page")
+    selected.receivedOutput = true
+    expect(selected.canPin, "and is still pinnable")
+}
+
 func testTurnAccumulatesItsAnswer() {
     let turn = AnchoraTurn(question: "Explain this", conversationUserText: "Explain this",
                            selection: nil, hasTextSelection: false, page: nil, pageRect: .zero, imageDataURL: nil,
@@ -1165,6 +1193,7 @@ enum AnchoraCoreTests {
         testFinishingRecognitionWithNothing()
         testSelectionContextStates()
         testTurnCannotPinWithoutAnAnchorOrAnAnswer()
+        testAnAnswerAnchoredToAPageCanBePinned()
         testTurnAccumulatesItsAnswer()
 
         if failures == 0 {

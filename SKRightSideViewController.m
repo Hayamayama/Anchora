@@ -708,14 +708,28 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
         return;
     }
 
+    // A follow-up asked without selecting anything again carries no anchor of
+    // its own, and an answer with nowhere to attach cannot be pinned -- which
+    // is why Pin latest answer kept going dead after the second question in a
+    // conversation.  The page the reader is on is the right place for it:
+    // it is where they were when they asked.
+    PDFSelection *textSelection = [selection selection];
+    PDFPage *anchorPage = [selection page];
+    NSRect anchorRect = [selection pageRect];
+    if (anchorPage == nil && [textSelection hasCharacters] == NO) {
+        SKPDFView *pdfView = [mainController pdfView];
+        anchorPage = [pdfView currentPage];
+        anchorRect = anchorPage ? [anchorPage boundsForBox:[pdfView displayBox]] : NSZeroRect;
+    }
+
     [self startAIRequestWithQuestion:question
                           sourceText:[selection text]
                         imageDataURL:[selection imageDataURL]
                          fileDataURL:nil
                             fileName:nil
-                           selection:[selection selection]
-                                page:[selection page]
-                            pageRect:[selection pageRect]
+                           selection:textSelection
+                                page:anchorPage
+                            pageRect:anchorRect
                      displayQuestion:displayQuestion];
 }
 
