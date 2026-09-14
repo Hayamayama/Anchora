@@ -141,9 +141,19 @@ public final class AnchoraCapture: NSObject {
         return compressed
     }
 
-    /// Where a photograph lands when it is dropped into a page: centred, and
-    /// never taking over the page it is annotating.
+    /// Where a photograph lands when it is put into a page: centred on the
+    /// page, and never taking over the page it is annotating.
     @objc public static func photoNoteBounds(imageSize: NSSize, pageBounds: NSRect) -> NSRect {
+        photoNoteBounds(imageSize: imageSize, pageBounds: pageBounds,
+                        centeredAt: NSPoint(x: pageBounds.midX, y: pageBounds.midY))
+    }
+
+    /// The same, around a chosen point -- where a dragged photograph was let
+    /// go -- and then pushed back onto the page, because a photo half over the
+    /// edge is a photo half lost.
+    @objc public static func photoNoteBounds(imageSize: NSSize,
+                                             pageBounds: NSRect,
+                                             centeredAt point: NSPoint) -> NSRect {
         guard imageSize.width > 0.0, imageSize.height > 0.0,
               pageBounds.width > 0.0, pageBounds.height > 0.0
         else { return .zero }
@@ -154,9 +164,9 @@ public final class AnchoraCapture: NSObject {
         // sit on, and rounding the origin of an odd-sized photo pushed it half
         // a point off centre for no benefit.
         let size = NSSize(width: imageSize.width * scale, height: imageSize.height * scale)
-        return NSRect(x: pageBounds.midX - size.width / 2.0,
-                      y: pageBounds.midY - size.height / 2.0,
-                      width: size.width, height: size.height)
+        let x = min(max(point.x - size.width / 2.0, pageBounds.minX), pageBounds.maxX - size.width)
+        let y = min(max(point.y - size.height / 2.0, pageBounds.minY), pageBounds.maxY - size.height)
+        return NSRect(x: x, y: y, width: size.width, height: size.height)
     }
 
     /// Never upscales: a small photograph is already as much detail as there

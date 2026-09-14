@@ -1075,6 +1075,35 @@ func testPhotoNoteBounds() {
                 "and neither does a page with no size")
 }
 
+/// A dragged photograph lands where it was let go -- but never hanging off the
+/// page, where half of it would be lost.
+func testPhotoNoteBoundsAtAPoint() {
+    let page = NSRect(x: 0.0, y: 0.0, width: 600.0, height: 800.0)
+    let size = NSSize(width: 4000.0, height: 3000.0)   // becomes 300 x 225
+
+    let middle = AnchoraCapture.photoNoteBounds(imageSize: size, pageBounds: page,
+                                                centeredAt: NSPoint(x: 200.0, y: 500.0))
+    expectEqual(middle.midX, 200.0, "it centres on the point it was dropped at")
+    expectEqual(middle.midY, 500.0, "in both directions")
+
+    let corner = AnchoraCapture.photoNoteBounds(imageSize: size, pageBounds: page,
+                                                centeredAt: NSPoint(x: 0.0, y: 0.0))
+    expectEqual(corner.minX, 0.0, "a drop at the corner is pushed back onto the page")
+    expectEqual(corner.minY, 0.0, "in both directions")
+    expectEqual(corner.width, 300.0, "without being shrunk to fit")
+
+    let far = AnchoraCapture.photoNoteBounds(imageSize: size, pageBounds: page,
+                                             centeredAt: NSPoint(x: 10_000.0, y: 10_000.0))
+    expectEqual(far.maxX, page.maxX, "and a drop past the far edge comes back too")
+    expectEqual(far.maxY, page.maxY, "in both directions")
+
+    // The page-centred form is the same thing aimed at the middle.
+    expectEqual(AnchoraCapture.photoNoteBounds(imageSize: size, pageBounds: page),
+                AnchoraCapture.photoNoteBounds(imageSize: size, pageBounds: page,
+                                               centeredAt: NSPoint(x: page.midX, y: page.midY)),
+                "and centring on the page is the same call aimed at its middle")
+}
+
 // MARK: - Capture geometry
 
 /// Two things have to be undone before a page rectangle matches what drawing
@@ -1291,6 +1320,7 @@ enum AnchoraCoreTests {
         testPhotoScaling()
         testDownscaledPhoto()
         testPhotoNoteBounds()
+        testPhotoNoteBoundsAtAPoint()
         testRenderRectUnrotatedPage()
         testRenderRectSubtractsTheBoxOrigin()
         testRenderRectRotations()

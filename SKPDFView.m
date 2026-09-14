@@ -68,6 +68,7 @@
 #import "NSEvent_SKExtensions.h"
 #import "PDFView_SKExtensions.h"
 #import "NSMenu_SKExtensions.h"
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import "NSGraphics_SKExtensions.h"
 #import "NSArray_SKExtensions.h"
 #import "NSColor_SKExtensions.h"
@@ -325,7 +326,8 @@ enum {
     if (options)
         [self addTrackingArea:[[NSTrackingArea alloc] initWithRect:NSZeroRect options:options | NSTrackingActiveInKeyWindow | NSTrackingInVisibleRect owner:self userInfo:nil]];
     
-    [self registerForDraggedTypes:@[NSPasteboardTypeColor, SKPasteboardTypeLineStyle]];
+    [self registerForDraggedTypes:@[NSPasteboardTypeColor, SKPasteboardTypeLineStyle,
+                                    NSPasteboardTypeFileURL, NSPasteboardTypeTIFF, NSPasteboardTypePNG]];
     
     NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
     [nc addObserver:self selector:@selector(handlePageChangedNotification:)
@@ -1385,10 +1387,14 @@ enum {
 }
 
 - (IBAction)paste:(id)sender {
+    if ([self addPhotoNoteFromPasteboard:[NSPasteboard generalPasteboard] atPoint:NSZeroPoint onPage:nil])
+        return;
     [self pasteNote:NO plainText:NO];
 }
 
 - (IBAction)alternatePaste:(id)sender {
+    if ([self addPhotoNoteFromPasteboard:[NSPasteboard generalPasteboard] atPoint:NSZeroPoint onPage:nil])
+        return;
     [self pasteNote:YES plainText:NO];
 }
 
@@ -2050,15 +2056,23 @@ enum {
 /// to carry an image: movable, resizable, deletable, undoable, and saved with
 /// the document's notes like every other annotation here.
 - (BOOL)addPhotoNoteWithImage:(NSImage *)image {
-    PDFPage *page = [self currentPage];
+    return [self addPhotoNoteWithImage:image atPoint:NSZeroPoint onPage:nil];
+}
+
+/// `page` nil means the page the reader is on, and the photograph is centred;
+/// otherwise it lands where it was dropped.
+- (BOOL)addPhotoNoteWithImage:(NSImage *)image atPoint:(NSPoint)pagePoint onPage:(PDFPage *)droppedPage {
+    PDFPage *page = droppedPage ?: [self currentPage];
     if (page == nil || [page isEditable] == NO) {
         NSBeep();
         return NO;
     }
 
     NSImage *photo = [AnchoraCapture downscaledPhotoFrom:image] ?: image;
-    NSRect bounds = [AnchoraCapture photoNoteBoundsWithImageSize:[photo size]
-                                                      pageBounds:[page boundsForBox:[self displayBox]]];
+    NSRect pageBounds = [page boundsForBox:[self displayBox]];
+    NSRect bounds = droppedPage
+        ? [AnchoraCapture photoNoteBoundsWithImageSize:[photo size] pageBounds:pageBounds centeredAt:pagePoint]
+        : [AnchoraCapture photoNoteBoundsWithImageSize:[photo size] pageBounds:pageBounds];
     if (NSIsEmptyRect(bounds)) {
         NSBeep();
         return NO;
@@ -2081,10 +2095,72 @@ enum {
     return YES;
 }
 
+/// A photograph from wherever it came: an image on the pasteboard, or a file
+/// dragged or chosen that happens to be one.
+- (NSImage *)photoFromPasteboard:(NSPasteboard *)pboard {
+    if ([NSImage canInitWithPasteboard:pboard]) {
+        NSImage *image = [[NSImage alloc] initWithPasteboard:pboard];
+        if (image)
+            return image;
+    }
+    NSArray<NSURL *> *urls = [pboard readObjectsForClasses:@[[NSURL class]]
+                                                   options:@{NSPasteboardURLReadingFileURLsOnlyKey: @YES,
+                                                             NSPasteboardURLReadingContentsConformToTypesKey: @[UTTypeImage.identifier]}];
+    if ([urls count] > 0)
+        return [[NSImage alloc] initWithContentsOfURL:[urls firstObject]];
+    return nil;
+}
+
+/// A copied Skim note is still a note: only what cannot be pasted as an
+/// annotation is treated as a photograph.
+- (BOOL)canReadPhotoFromPasteboard:(NSPasteboard *)pboard {
+    if ([pboard canReadObjectForClasses:@[[PDFAnnotation class]] options:@{}])
+        return NO;
+    if ([NSImage canInitWithPasteboard:pboard])
+        return YES;
+    return [pboard canReadObjectForClasses:@[[NSURL class]]
+                                   options:@{NSPasteboardURLReadingFileURLsOnlyKey: @YES,
+                                             NSPasteboardURLReadingContentsConformToTypesKey: @[UTTypeImage.identifier]}];
+}
+
+- (BOOL)addPhotoNoteFromPasteboard:(NSPasteboard *)pboard atPoint:(NSPoint)pagePoint onPage:(PDFPage *)page {
+    if ([self canReadPhotoFromPasteboard:pboard] == NO)
+        return NO;
+    NSImage *image = [self photoFromPasteboard:pboard];
+    if (image == nil)
+        return NO;
+    return [self addPhotoNoteWithImage:image atPoint:pagePoint onPage:page];
+}
+
+/// Choosing a file, for the picture that is already on this Mac.
+- (IBAction)insertPhotoFromFile:(id)sender {
+    NSOpenPanel *panel = [NSOpenPanel openPanel];
+    [panel setAllowedContentTypes:@[UTTypeImage]];
+    [panel setAllowsMultipleSelection:NO];
+    [panel setMessage:NSLocalizedString(@"Choose a picture to place on this page.", @"Open panel message")];
+    [panel setPrompt:NSLocalizedString(@"Insert", @"Open panel prompt")];
+    NSWindow *window = [self window];
+    void (^handler)(NSModalResponse) = ^(NSModalResponse result) {
+        NSURL *url = result == NSModalResponseOK ? [[panel URLs] firstObject] : nil;
+        NSImage *image = url ? [[NSImage alloc] initWithContentsOfURL:url] : nil;
+        if (image)
+            [self addPhotoNoteWithImage:image];
+        else if (url)
+            NSBeep();
+    };
+    if (window)
+        [panel beginSheetModalForWindow:window completionHandler:handler];
+    else
+        handler([panel runModal]);
+}
+
 /// AppKit replaces an item carrying this identifier with the nearby devices and
 /// their Take Photo / Scan Documents entries, and removes it when there are
 /// none, so nothing here has to know what is on the desk.
 - (void)addImportFromDeviceItemToMenu:(NSMenu *)menu {
+    [menu addItemWithTitle:NSLocalizedString(@"Insert Picture…", @"Menu item title")
+                    action:@selector(insertPhotoFromFile:)
+                    target:self];
     NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:NSLocalizedString(@"Import from iPhone or iPad", @"Menu item title")
                                                   action:nil
                                            keyEquivalent:@""];
@@ -2441,6 +2517,8 @@ enum {
     NSPasteboard *pboard = [sender draggingPasteboard];
     if ([pboard canReadItemWithDataConformingToTypes:@[NSPasteboardTypeColor, SKPasteboardTypeLineStyle]]) {
         return [self draggingUpdated:sender];
+    } else if ([self canReadPhotoFromPasteboard:pboard]) {
+        return NSDragOperationCopy;
     } else if ([[SKPDFView superclass] instancesRespondToSelector:_cmd]) {
         dragOp = [super draggingEntered:sender];
     }
@@ -2513,6 +2591,12 @@ enum {
             }
             [self setHighlightAnnotation:nil];
         }
+    } else if ([self canReadPhotoFromPasteboard:pboard]) {
+        NSPoint viewPoint = [self convertPoint:[sender draggingLocation] fromView:nil];
+        PDFPage *page = [self pageForPoint:viewPoint nearest:YES];
+        performedDrag = [self addPhotoNoteFromPasteboard:pboard
+                                                 atPoint:[self convertPoint:viewPoint toPage:page]
+                                                  onPage:page];
     } else if ([[SKPDFView superclass] instancesRespondToSelector:_cmd]) {
         performedDrag = [super performDragOperation:sender];
     }
@@ -3520,9 +3604,13 @@ static inline CGFloat secondaryOutset(CGFloat x) {
             return YES;
         return NO;
     } else if (action == @selector(paste:)) {
-        return [self canSelectNote] && [[NSPasteboard generalPasteboard] canReadObjectForClasses:@[[PDFAnnotation class], [NSString class]] options:@{}];
+        return [self canSelectNote] && ([[NSPasteboard generalPasteboard] canReadObjectForClasses:@[[PDFAnnotation class], [NSString class]] options:@{}] ||
+                                        [self canReadPhotoFromPasteboard:[NSPasteboard generalPasteboard]]);
+    } else if (action == @selector(insertPhotoFromFile:)) {
+        return [[self currentPage] isEditable];
     } else if (action == @selector(alternatePaste:)) {
-        return [self canSelectNote] && [[NSPasteboard generalPasteboard] canReadObjectForClasses:@[[PDFAnnotation class], [NSAttributedString class], [NSString class]] options:@{}];
+        return [self canSelectNote] && ([[NSPasteboard generalPasteboard] canReadObjectForClasses:@[[PDFAnnotation class], [NSAttributedString class], [NSString class]] options:@{}] ||
+                                        [self canReadPhotoFromPasteboard:[NSPasteboard generalPasteboard]]);
     } else if (action == @selector(pasteAsPlainText:)) {
         return [self canSelectNote] && [[NSPasteboard generalPasteboard] canReadObjectForClasses:@[[NSAttributedString class], [NSString class]] options:@{}];
     } else if (action == @selector(delete:)) {

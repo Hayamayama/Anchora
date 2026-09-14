@@ -785,6 +785,24 @@ restored note has image  : true 200 x 200      ← 通過 notes 的存讀往返
 
 版本 `1.8.1 (21)`；測試 367 個檢查。
 
+### 1.8.2 — 照片也可以從這台 Mac 進來
+
+1.8.1 只做了從 iPhone 拍。同一個落地機制（`addPhotoNoteWithImage:`）現在有三個入口：
+
+- **右鍵 →「Insert Picture…」** 開檔案選擇器，只列圖片。
+- **⌘V 貼上**。剪貼簿上是圖片（或一個指向圖片檔的 URL）就貼成照片；**複製的 Skim 筆記仍然照舊貼成筆記** —— 先問 pasteboard 有沒有 `PDFAnnotation`，有就走原本的路。
+- **從 Finder 拖進來**，而且**落在你放開的位置**，不是頁面正中央。
+
+拖曳落點因此需要「以某一點為中心」的落點計算：算出尺寸之後以該點置中，再推回頁面範圍內 —— 一張有一半掛在頁面外的照片等於丟了一半。原本「置中於頁面」的版本現在就是同一個函式瞄準頁面中心。
+
+`registerForDraggedTypes:` 多收 file URL、TIFF、PNG；`draggingEntered:` 對可讀成圖片的拖曳回 `NSDragOperationCopy`，其餘一律維持原本的顏色／線條樣式行為與 super 的處理。
+
+8 個新檢查（367 → 375）：落在放開的點上、落在角落會被推回頁內、推回時不縮小、落點遠超出頁面也會回來，以及「置中於頁面」等同於「瞄準頁面中心」。
+
+啟動與標註路徑做過回歸檢查（開檔、用 scripting 加一個 note，`notes=1 modified=true`）。**選檔／貼上／拖曳三個入口本身仍然要你動手試** —— 那些是互動路徑，這裡沒辦法自動驗。
+
+版本 `1.8.2 (22)`；測試 375 個檢查。
+
 ---
 
 ## 目前可用功能
@@ -806,7 +824,7 @@ restored note has image  : true 200 x 200      ← 通過 notes 的存讀往返
 - 輸入框 Return 送出、Shift-Return 換行，並隨內容長高（約六行後改為捲動）。
 - CONTEXT 為一行狀態；抽取出來的文字可點開 popover 檢查全文。
 - 空白啟動（或 Dock 點擊而沒有視窗）時自動叫出開檔面板，不再是一片空白。
-- PDF 上按右鍵可用 Continuity Camera 從 iPhone 拍照或掃描，照片成為頁面上可拖曳縮放的標註，隨 Skim notes 保存。
+- 照片可從 iPhone 拍照／掃描、從檔案選取、⌘V 貼上或從 Finder 拖入，成為頁面上可拖曳縮放的標註，隨 Skim notes 保存。
 - 退出時若有未儲存的修改會詢問，不再靜悄悄地丟掉標註。
 - 雜念收納：⌘⇧J 從任何地方寫一行，記下當時的文件與頁碼；側欄 Inbox 抽屜管理。
 - Study map 與 Paper map 存在本機，重開文件時自動還原。
@@ -872,8 +890,8 @@ codesign --verify --deep --strict --verbose=2 Distribution/PDFBuddy.app
 ## 發行位置
 
 - Release app：`Distribution/Anchora.app`
-- Release 附件：`Distribution/Anchora-1.8.1-macos-arm64.zip`（8.8 MB，SHA-256 `ce2a0278…`）
-- 版本：`1.8.1 (21)`
+- Release 附件：`Distribution/Anchora-1.8.2-macos-arm64.zip`（8.8 MB，SHA-256 `c978ea7c…`）
+- 版本：`1.8.2 (22)`
 - 最低系統：macOS 14.0
 - 大小：約 17 MB
 - Bundle ID：`com.kris.anchora`
