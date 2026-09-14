@@ -62,10 +62,6 @@ extern NSString *SKPDFViewSelectionChangedNotification;
 extern NSString *SKPDFViewAISelectionAreaChangedNotification;
 // Posted after a Command-Option-dragged visual region is finished.
 extern NSString *SKPDFViewAIImageSelectionAreaChangedNotification;
-// Posted when a photograph arrives from an iPhone or iPad through Continuity
-// Camera. The image is in the userInfo under SKPDFViewImportedImageKey.
-extern NSString *SKPDFViewDidImportImageNotification;
-extern NSString *SKPDFViewImportedImageKey;
 extern NSString *SKPDFViewMagnificationChangedNotification;
 extern NSString *SKPDFViewPacerStartedOrStoppedNotification;
 

@@ -751,6 +751,40 @@ harness 沒辦法假造真實輸入法的「確認」動作（它背後沒有真
 
 版本 `1.8.0 (20)`；測試 358 個檢查。
 
+### 1.8.1 — 照片貼進 PDF
+
+1.8.0 把 Continuity Camera 接成「拍照給 AI 問問題」，那是誤解。真正要的是**照片留在 PDF 裡**，所以改掉：拍下來的照片現在成為頁面上的一個標註，可以拖、可以縮放、可以刪除、可以 undo。
+
+**載體是 anchored note，因為 Skim 的 note 格式本來就帶圖片。** `SKNPDFAnnotationImageKey = @"image"`、`initSkimNoteWithProperties:` 會把它讀回 `_image`、`SkimNoteProperties` 會把它寫出去、`SKNUtilities` 負責編成 PNG 再解回來、note 視窗甚至有把圖片拖出去存檔的程式碼。整套都在。
+
+**但它從來不能用。** `SKNPDFAnnotationNote.m` 裡是 `@dynamic image;`，而**整個框架沒有任何地方實作那個 accessor** —— 所以 `[self image]`（`SkimNoteProperties` 自己在呼叫）和 `[note image]`（note 視窗的拖曳支援在呼叫）都是等著發生的 crash。改成 `@synthesize image = _image;`，既有的序列化就活過來了。這是這次改動裡唯一動到 SkimNotes 框架的地方，一行。
+
+剩下的是讓它畫出來：`drawWithBox:inContext:` 先問 `drawPhotoWithBox:`，有圖片就畫圖片、沒有就走原本的 icon 路徑。原本那個 icon 方法被包在 `MAC_OS_X_VERSION_MIN_REQUIRED < 10.15` 的條件裡（在我們的 target 下根本沒編進去），所以拆成 `drawNoteIconWithBox:` 並補上 10.15 之後的分支，兩種 target 都只會有一份定義。
+
+**畫得對不對是用渲染驗的，不是用眼睛。** 連結建置出來的 `SkimNotes.framework`，造一份單頁 PDF、放一個帶圖片的 note、把頁面畫成點陣圖再取樣像素。圖片刻意在**上緣**畫一條紅帶，這樣上下顛倒會立刻看得出來：
+
+```
+class from the factory   : SKNPDFAnnotationNote
+centre / top / bottom    : BLUE / RED / BLUE   ← 位置對、沒有上下顛倒
+outside the note         : white               ← 沒有溢出 bounds
+properties carry an image: true
+restored note has image  : true 200 x 200      ← 通過 notes 的存讀往返
+```
+
+同一個 harness 先抓到兩件事：直接 `[[SKNPDFAnnotationNote alloc] initSkimNoteWithBounds:]` 不保證拿到子類（改用 Skim 自己的 `newSkimNoteWithBounds:forType:` 工廠），以及上面那個 `@dynamic` 的空殼。
+
+**其他細節：** 照片進 PDF 前先縮到最長邊 2048 並以 JPEG 0.82 重新編碼 —— 一份 PDF 收幾張一千兩百萬像素的原圖就寄不出去了。落點置中、最長邊不超過頁面的一半，而且不四捨五入（PDF 使用者空間是連續的，沒有像素格可以對齊；先前的四捨五入讓奇數尺寸的照片偏了半點）。anchored note 原本固定大小不可縮放，現在**帶圖片的才可縮放** —— icon 是 icon，照片要看得清楚。
+
+想拿照片去問 AI 仍然可以：照片畫在頁面上，Command-Option 拖曳那塊區域就是既有的功能。
+
+9 個新檢查（358 → 367）：縮放只看最長邊、不放大、空圖不產生標註、落點置中且維持比例、高的照片改由高度決定、頁面尺寸為零時不產生 bounds。
+
+**還是要你用手機試。** 這台機器旁邊沒有 iPhone，選單項只有在有裝置時才會出現。畫圖與持久化這兩段現在是驗證過的，沒驗過的是「選單有沒有出現、照片有沒有真的從手機進來」。
+
+**一個限制要知道：** 照片存在 Skim notes 裡，而 Anchora 把 notes 寫在檔案的 extended attributes（`SKMainDocument.m:457`）。同一台 Mac 上複製檔案通常留得住，但 email、上傳、壓縮多半會掉。要讓照片真的跟著 PDF 走給別人看，需要的是「結合到頁面」那一步 —— 你選的下一階段。
+
+版本 `1.8.1 (21)`；測試 367 個檢查。
+
 ---
 
 ## 目前可用功能
@@ -772,7 +806,7 @@ harness 沒辦法假造真實輸入法的「確認」動作（它背後沒有真
 - 輸入框 Return 送出、Shift-Return 換行，並隨內容長高（約六行後改為捲動）。
 - CONTEXT 為一行狀態；抽取出來的文字可點開 popover 檢查全文。
 - 空白啟動（或 Dock 點擊而沒有視窗）時自動叫出開檔面板，不再是一片空白。
-- PDF 上按右鍵可用 Continuity Camera 從 iPhone 拍照或掃描，照片直接成為 AI context。
+- PDF 上按右鍵可用 Continuity Camera 從 iPhone 拍照或掃描，照片成為頁面上可拖曳縮放的標註，隨 Skim notes 保存。
 - 退出時若有未儲存的修改會詢問，不再靜悄悄地丟掉標註。
 - 雜念收納：⌘⇧J 從任何地方寫一行，記下當時的文件與頁碼；側欄 Inbox 抽屜管理。
 - Study map 與 Paper map 存在本機，重開文件時自動還原。
@@ -838,8 +872,8 @@ codesign --verify --deep --strict --verbose=2 Distribution/PDFBuddy.app
 ## 發行位置
 
 - Release app：`Distribution/Anchora.app`
-- Release 附件：`Distribution/Anchora-1.8.0-macos-arm64.zip`（8.8 MB，SHA-256 `902135fd…`）
-- 版本：`1.8.0 (20)`
+- Release 附件：`Distribution/Anchora-1.8.1-macos-arm64.zip`（8.8 MB，SHA-256 `ce2a0278…`）
+- 版本：`1.8.1 (21)`
 - 最低系統：macOS 14.0
 - 大小：約 17 MB
 - Bundle ID：`com.kris.anchora`

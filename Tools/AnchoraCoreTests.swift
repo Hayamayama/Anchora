@@ -1021,26 +1021,58 @@ func decodePhoto(_ url: String?) -> NSBitmapImageRep? {
     return NSBitmapImageRep(data: data)
 }
 
-func testPhotoDataURL() {
-    let url = AnchoraCapture.photoDataURL(from: makePhoto(pixelsWide: 4032, pixelsHigh: 3024))
-    expect(url?.hasPrefix("data:image/jpeg;base64,") ?? false,
-           "a photograph becomes a JPEG data URL, which is what the API takes")
-    guard let rep = decodePhoto(url) else {
-        return expect(false, "and the payload decodes back to an image")
+func testDownscaledPhoto() {
+    let large = AnchoraCapture.downscaledPhoto(from: makePhoto(pixelsWide: 4032, pixelsHigh: 3024))
+    guard let rep = large?.representations.first else {
+        return expect(false, "a photograph comes back as an image")
     }
     expectEqual(rep.pixelsWide, 2048, "scaled to the ceiling on its longest side")
     expectEqual(rep.pixelsHigh, 1536, "keeping its aspect ratio")
 
-    guard let small = decodePhoto(AnchoraCapture.photoDataURL(from: makePhoto(pixelsWide: 300, pixelsHigh: 200)))
+    guard let small = AnchoraCapture.downscaledPhoto(from: makePhoto(pixelsWide: 300, pixelsHigh: 200))?
+        .representations.first
     else { return expect(false, "a small photograph still works") }
     expectEqual(small.pixelsWide, 300, "and is passed through at its own size rather than enlarged")
 
-    guard let portrait = decodePhoto(AnchoraCapture.photoDataURL(from: makePhoto(pixelsWide: 3024, pixelsHigh: 4032)))
+    guard let portrait = AnchoraCapture.downscaledPhoto(from: makePhoto(pixelsWide: 3024, pixelsHigh: 4032))?
+        .representations.first
     else { return expect(false, "a portrait photograph works") }
     expectEqual(portrait.pixelsHigh, 2048, "the longest side is the one that meets the ceiling")
 
-    expect(AnchoraCapture.photoDataURL(from: NSImage(size: .zero)) == nil,
-           "an empty image produces nothing rather than an empty attachment")
+    expect(AnchoraCapture.downscaledPhoto(from: NSImage(size: .zero)) == nil,
+           "an empty image produces nothing rather than an empty note")
+}
+
+/// Where a photograph lands when it is dropped into a page.  It annotates the
+/// page; it must not take it over, and it must not arrive distorted.
+func testPhotoNoteBounds() {
+    let page = NSRect(x: 0.0, y: 0.0, width: 600.0, height: 800.0)
+
+    let landscape = AnchoraCapture.photoNoteBounds(imageSize: NSSize(width: 4000.0, height: 3000.0),
+                                                   pageBounds: page)
+    expectEqual(landscape.width, 300.0, "a wide photo is held to half the page's width")
+    expectEqual(landscape.height, 225.0, "and keeps its aspect ratio")
+    expectEqual(landscape.midX, page.midX, "centred across the page")
+    expectEqual(landscape.midY, page.midY, "and down it")
+
+    let tall = AnchoraCapture.photoNoteBounds(imageSize: NSSize(width: 1000.0, height: 4000.0),
+                                              pageBounds: page)
+    expectEqual(tall.height, 400.0, "a tall photo is held to half the page's height instead")
+    expectEqual(tall.width, 100.0, "still in proportion")
+    expect(tall.maxY <= page.maxY && tall.minY >= page.minY, "and stays on the page")
+
+    // A page-shaped photo must be limited by both, not by whichever is checked
+    // first.
+    let matching = AnchoraCapture.photoNoteBounds(imageSize: NSSize(width: 600.0, height: 800.0),
+                                                  pageBounds: page)
+    expect(matching.width <= page.width / 2.0 && matching.height <= page.height / 2.0,
+           "neither dimension runs past half the page")
+
+    expectEqual(AnchoraCapture.photoNoteBounds(imageSize: .zero, pageBounds: page), .zero,
+                "an empty image has no bounds to occupy")
+    expectEqual(AnchoraCapture.photoNoteBounds(imageSize: NSSize(width: 10.0, height: 10.0),
+                                               pageBounds: .zero), .zero,
+                "and neither does a page with no size")
 }
 
 // MARK: - Capture geometry
@@ -1257,7 +1289,8 @@ enum AnchoraCoreTests {
         testTextQualityHeuristic()
         testRecognitionLanguageResolution()
         testPhotoScaling()
-        testPhotoDataURL()
+        testDownscaledPhoto()
+        testPhotoNoteBounds()
         testRenderRectUnrotatedPage()
         testRenderRectSubtractsTheBoxOrigin()
         testRenderRectRotations()

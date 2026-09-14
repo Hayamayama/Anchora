@@ -544,40 +544,6 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
     });
 }
 
-/// A photograph from an iPhone becomes the AI context, the same way a
-/// Command-Option-dragged region does.  It is anchored to the page the reader
-/// is on so the answer still has somewhere to be pinned -- the photo is of
-/// something beside the document, but the reader is somewhere in the document.
-- (void)importPhotoFromDevice:(NSNotification *)notification {
-    NSImage *image = [[notification userInfo] objectForKey:SKPDFViewImportedImageKey];
-    if (image == nil)
-        return;
-
-    NSString *dataURL = [AnchoraCapture photoDataURLFrom:image];
-    if ([dataURL length] == 0) {
-        [self.aiHeaderModel setContextText:[AnchoraPrompts imageCaptureFailureMessage] expandable:NO];
-        NSBeep();
-        return;
-    }
-
-    SKPDFView *pdfView = [mainController pdfView];
-    PDFPage *page = [pdfView currentPage];
-    [self applySelection:[AnchoraSelection imageWithDataURL:dataURL
-                                                      page:page
-                                                  pageRect:page ? [page boundsForBox:[pdfView displayBox]] : NSZeroRect
-                                                      text:[AnchoraPrompts photoContextText]
-                                                   message:[AnchoraPrompts photoReadyMessage]
-                                                     after:self.aiSelection]];
-
-    if ([mainController rightSidePaneIsOpen] == NO)
-        [mainController toggleRightSidePane:nil];
-    [mainController setRightSidePaneState:SKSidePaneStateAI];
-    [self.aiPaneModel showChat];
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self.aiComposerModel focusQuestionField];
-    });
-}
-
 - (void)applySelection:(AnchoraSelection *)selection {
     self.aiSelection = selection;
     [self.aiHeaderModel setContextText:[selection contextDescription] expandable:[selection isContextExpandable]];
@@ -1463,7 +1429,6 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
         [[NSNotificationCenter defaultCenter] removeObserver:self name:SKPDFViewSelectionChangedNotification object:[mainController pdfView]];
         [[NSNotificationCenter defaultCenter] removeObserver:self name:SKPDFViewAISelectionAreaChangedNotification object:[mainController pdfView]];
         [[NSNotificationCenter defaultCenter] removeObserver:self name:SKPDFViewAIImageSelectionAreaChangedNotification object:[mainController pdfView]];
-        [[NSNotificationCenter defaultCenter] removeObserver:self name:SKPDFViewDidImportImageNotification object:[mainController pdfView]];
         [[NSNotificationCenter defaultCenter] removeObserver:self name:PDFViewSelectionChangedNotification object:[mainController pdfView]];
     }
     [super setMainController:newMainController];
@@ -1471,7 +1436,6 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateSelectionContext:) name:SKPDFViewSelectionChangedNotification object:[newMainController pdfView]];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateSelectionContext:) name:SKPDFViewAISelectionAreaChangedNotification object:[newMainController pdfView]];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateSelectionContext:) name:SKPDFViewAIImageSelectionAreaChangedNotification object:[newMainController pdfView]];
-        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(importPhotoFromDevice:) name:SKPDFViewDidImportImageNotification object:[newMainController pdfView]];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateSelectionContext:) name:PDFViewSelectionChangedNotification object:[newMainController pdfView]];
         [self updateSelectionContext:nil];
     }

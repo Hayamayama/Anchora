@@ -40,6 +40,7 @@
 #import "SKNavigationWindow.h"
 #import "SKImageToolTipWindow.h"
 #import <SkimNotes/SkimNotes.h>
+#import "Anchora-Swift.h"
 #import "PDFAnnotation_SKExtensions.h"
 #import "PDFAnnotationMarkup_SKExtensions.h"
 #import "PDFAnnotationInk_SKExtensions.h"
@@ -123,8 +124,6 @@ NSString *SKPDFViewReadingBarDidChangeNotification = @"SKPDFViewReadingBarDidCha
 NSString *SKPDFViewSelectionChangedNotification = @"SKPDFViewSelectionChangedNotification";
 NSString *SKPDFViewAISelectionAreaChangedNotification = @"SKPDFViewAISelectionAreaChangedNotification";
 NSString *SKPDFViewAIImageSelectionAreaChangedNotification = @"SKPDFViewAIImageSelectionAreaChangedNotification";
-NSString *SKPDFViewDidImportImageNotification = @"SKPDFViewDidImportImageNotification";
-NSString *SKPDFViewImportedImageKey = @"SKPDFViewImportedImage";
 NSString *SKPDFViewMagnificationChangedNotification = @"SKPDFViewMagnificationChangedNotification";
 NSString *SKPDFViewPacerStartedOrStoppedNotification = @"SKPDFViewPacerStartedOrStoppedNotification";
 
@@ -2044,9 +2043,41 @@ enum {
     NSImage *image = [[NSImage alloc] initWithPasteboard:pboard];
     if (image == nil)
         return NO;
-    [[NSNotificationCenter defaultCenter] postNotificationName:SKPDFViewDidImportImageNotification
-                                                        object:self
-                                                      userInfo:@{ SKPDFViewImportedImageKey: image }];
+    return [self addPhotoNoteWithImage:image];
+}
+
+/// Puts a photograph on the current page as an ordinary Skim note that happens
+/// to carry an image: movable, resizable, deletable, undoable, and saved with
+/// the document's notes like every other annotation here.
+- (BOOL)addPhotoNoteWithImage:(NSImage *)image {
+    PDFPage *page = [self currentPage];
+    if (page == nil || [page isEditable] == NO) {
+        NSBeep();
+        return NO;
+    }
+
+    NSImage *photo = [AnchoraCapture downscaledPhotoFrom:image] ?: image;
+    NSRect bounds = [AnchoraCapture photoNoteBoundsWithImageSize:[photo size]
+                                                      pageBounds:[page boundsForBox:[self displayBox]]];
+    if (NSIsEmptyRect(bounds)) {
+        NSBeep();
+        return NO;
+    }
+
+    // Through the factory rather than by allocating the class directly:
+    // initSkimNoteWithBounds: does not promise to hand back the subclass, and
+    // a plain annotation has nowhere to put an image.
+    PDFAnnotation *note = [PDFAnnotation newSkimNoteWithBounds:bounds forType:SKNNoteString];
+    if ([note isKindOfClass:[SKNPDFAnnotationNote class]] == NO)
+        return NO;
+    [(SKNPDFAnnotationNote *)note setImage:photo];
+    [note setString:NSLocalizedString(@"Photo", @"Default name for an imported photograph")];
+
+    [self beginNewUndoGroupIfNeededWithCommit:YES];
+    [note registerUserName];
+    [[self document] addAnnotation:note toPage:page];
+    [self setUndoActionName:NSLocalizedString(@"Add Photo", @"Undo action name")];
+    [self setCurrentAnnotation:note];
     return YES;
 }
 

@@ -85,7 +85,12 @@ static inline void drawIconInsert(CGContextRef context, NSRect bounds);
 
 @synthesize string = _string;
 @synthesize text = _text;
-@dynamic image;
+// Was @dynamic with no implementation anywhere, which made every use of it a
+// crash waiting to happen: initSkimNoteWithProperties: fills _image, and
+// SkimNoteProperties reads it back through [self image]. The ivar, the
+// serialization on both sides and the note window's drag-out support were all
+// already here; only the accessors were missing.
+@synthesize image = _image;
 #if !defined(PDFKIT_PLATFORM_IOS)
 @dynamic mutableText;
 @synthesize texts = _texts;
@@ -202,9 +207,42 @@ static inline void drawIconInsert(CGContextRef context, NSRect bounds);
 }
 
 
-#if !defined(MAC_OS_X_VERSION_10_15) || MAC_OS_X_VERSION_MIN_REQUIRED < MAC_OS_X_VERSION_10_15
+/// A note carrying a photograph draws the photograph, filling the bounds the
+/// note has been given, instead of a note icon.
+///
+/// Nothing else about it changes: it is an ordinary Skim note, saved with the
+/// document's notes like any other.  That is what makes this work at all --
+/// the notes format has carried a per-note image for years (SKNUtilities
+/// encodes one to PNG on the way out and back on the way in); it was simply
+/// never drawn on the page.
+- (BOOL)drawPhotoWithBox:(PDFDisplayBox)box inContext:(CGContextRef)context {
+    NSRect bounds = [self bounds];
+    if (_image == nil || NSWidth(bounds) < 1.0 || NSHeight(bounds) < 1.0)
+        return NO;
+    CGImageRef cgImage = [_image CGImageForProposedRect:NULL context:nil hints:nil];
+    if (cgImage == NULL)
+        return NO;
+
+    CGContextSaveGState(context);
+    [[self page] transformContext:context forBox:box];
+    // Filled first: a photograph with transparency would otherwise show the
+    // page through it, which reads as a rendering fault rather than a choice.
+    CGContextSetFillColorWithColor(context, CGColorGetConstantColor(kCGColorWhite));
+    CGContextFillRect(context, NSRectToCGRect(bounds));
+    CGContextDrawImage(context, NSRectToCGRect(bounds), cgImage);
+    CGContextRestoreGState(context);
+    return YES;
+}
 
 - (void)drawWithBox:(PDFDisplayBox)box inContext:(CGContextRef)context {
+    if ([self drawPhotoWithBox:box inContext:context])
+        return;
+    [self drawNoteIconWithBox:box inContext:context];
+}
+
+#if !defined(MAC_OS_X_VERSION_10_15) || MAC_OS_X_VERSION_MIN_REQUIRED < MAC_OS_X_VERSION_10_15
+
+- (void)drawNoteIconWithBox:(PDFDisplayBox)box inContext:(CGContextRef)context {
     if (floor(NSAppKitVersionNumber) < SKNAppKitVersionNumber10_12 || floor(NSAppKitVersionNumber) > SKNAppKitVersionNumber10_14 || [self hasAppearanceStream]) {
         [super drawWithBox:box inContext:context];
     } else {
@@ -237,6 +275,12 @@ static inline void drawIconInsert(CGContextRef context, NSRect bounds);
         }
         CGContextRestoreGState(context);
     }
+}
+
+#else
+
+- (void)drawNoteIconWithBox:(PDFDisplayBox)box inContext:(CGContextRef)context {
+    [super drawWithBox:box inContext:context];
 }
 
 #endif

@@ -68,6 +68,10 @@ NSString *SKPDFAnnotationRichTextKey = @"richText";
 
 - (BOOL)isMovable { return [self isSkimNote]; }
 
+// A note showing a photograph is the one kind worth resizing: the icon has a
+// fixed size because it is an icon, but a photograph has to be readable.
+- (BOOL)isResizable { return [self isSkimNote] && [self image] != nil; }
+
 - (BOOL)hasBorder { return NO; }
 
 // override these Leopard methods to avoid showing the standard tool tips over our own

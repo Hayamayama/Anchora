@@ -106,13 +106,12 @@ public final class AnchoraCapture: NSObject {
                 compression: 0.82)
     }
 
-    /// A photograph handed over by an iPhone, for "here is the thing in front
-    /// of me" -- a handout, a whiteboard, a page of a book that is not a PDF.
+    /// A photograph handed over by an iPhone, on its way into the page.
     ///
-    /// Downscaled first.  A phone photograph arrives at twelve megapixels,
-    /// which costs a great deal to send and answers no better than the same
-    /// picture at a sensible size.
-    @objc public static func photoDataURL(from image: NSImage) -> String? {
+    /// Downscaled first.  A phone photograph arrives at twelve megapixels, and
+    /// a PDF that picks up a few of those at full size becomes something you
+    /// cannot mail.  The note stores what this returns.
+    @objc public static func downscaledPhoto(from image: NSImage) -> NSImage? {
         guard let source = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
         let sourceWidth = CGFloat(source.width)
         let sourceHeight = CGFloat(source.height)
@@ -132,7 +131,32 @@ public final class AnchoraCapture: NSObject {
         context.setFillColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0)
         context.fill(CGRect(x: 0, y: 0, width: pixelsWide, height: pixelsHigh))
         context.draw(source, in: CGRect(x: 0, y: 0, width: pixelsWide, height: pixelsHigh))
-        return dataURL(imageRep, compression: 0.82)
+
+        // Round-tripped through JPEG rather than kept as a bitmap: this image
+        // is about to be written into the document's notes, and the difference
+        // between the two is most of the file size.
+        guard let data = imageRep.representation(using: .jpeg, properties: [.compressionFactor: 0.82]),
+              let compressed = NSImage(data: data)
+        else { return nil }
+        return compressed
+    }
+
+    /// Where a photograph lands when it is dropped into a page: centred, and
+    /// never taking over the page it is annotating.
+    @objc public static func photoNoteBounds(imageSize: NSSize, pageBounds: NSRect) -> NSRect {
+        guard imageSize.width > 0.0, imageSize.height > 0.0,
+              pageBounds.width > 0.0, pageBounds.height > 0.0
+        else { return .zero }
+        let fraction: CGFloat = 0.5
+        let scale = min(fraction * pageBounds.width / imageSize.width,
+                        fraction * pageBounds.height / imageSize.height)
+        // Not rounded: PDF user space is continuous, there is no pixel grid to
+        // sit on, and rounding the origin of an odd-sized photo pushed it half
+        // a point off centre for no benefit.
+        let size = NSSize(width: imageSize.width * scale, height: imageSize.height * scale)
+        return NSRect(x: pageBounds.midX - size.width / 2.0,
+                      y: pageBounds.midY - size.height / 2.0,
+                      width: size.width, height: size.height)
     }
 
     /// Never upscales: a small photograph is already as much detail as there
