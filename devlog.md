@@ -803,6 +803,35 @@ restored note has image  : true 200 x 200      ← 通過 notes 的存讀往返
 
 版本 `1.8.2 (22)`；測試 375 個檢查。
 
+### 發行腳本：重簽時 entitlements 被靜悄悄清空
+
+還沒實際跑過公證（沒有 Developer ID 憑證），但先把這個問題找出來，免得帳號生效那天才卡住。
+
+`package-release.sh` 對每個巢狀項目（Sparkle.framework、裡面的 Updater.app、SkimNotes.framework、Spotlight importer）跟主 app 都用 `codesign --force --sign` 重簽。`--force` 是整個換掉簽章，**沒有帶 `--entitlements` 的話新簽章的 entitlements 是空的** —— 不是保留舊的，是直接沒有。
+
+對主 app 影響最大：`Skim.entitlements` 裡的 `com.apple.security.cs.disable-library-validation` 就是讓 hardened runtime 容忍 bundle 裡那些非 Apple 簽的 dylib（Sparkle 那一套）用的。沒有這個 entitlement，公證本身可能會過，**但 app 在啟用 hardened runtime 預設值的機器上會拒絕啟動或拒絕載入那些函式庫** —— 而且這種失敗不會出現在公證的錯誤訊息裡，只會在使用者那邊炸開。
+
+修法：主 app 重簽時明確帶 `--entitlements Skim.entitlements`；巢狀項目改用 `--preserve-metadata=entitlements,requirements`，把它們自己建置時拿到的 entitlements原樣留著，而不是被 `--force` 一併清空。
+
+**用 ad-hoc 簽章驗證過兩件事：**
+
+```
+主 app 重簽後：com.apple.security.automation.apple-events = true
+             com.apple.security.cs.disable-library-validation = true
+```
+
+兩個 key 都在，符合 `Skim.entitlements`。同時也確認了明確帶 `--entitlements` 的副作用是對的：Xcode 對 ad-hoc 簽章的建置本來會附上除錯用的 `com.apple.security.get-task-allow = true`，重簽後這個 key 正確地消失了 —— 散布版本不該帶著這個。
+
+```
+Sparkle 的 Updater.app：重簽前後都是空的 entitlements dict
+```
+
+這個巢狀項目本來就沒有任何 entitlements，所以 `--preserve-metadata` 這次沒有實際保留到東西，但保留機制本身是對的：以後 Sparkle 版本更新、或換成走 `--options runtime` 的公證簽章路徑，若巢狀項目開始帶自己的 entitlements，這裡不會再把它們清空。
+
+因為這只是簽章腳本的修正、不影響 app 行為，沒有 bump 版本；但既然重新跑過一次腳本，`Distribution/Anchora-1.8.2-macos-arm64.zip` 的 SHA-256 從 `c978ea7c…` 變成 `fdc7594c…`（bundle byte-for-byte 只差在 entitlements blob，功能沒有變化）。
+
+**還沒驗到的：** 真正的 `--options runtime` + Developer ID 簽章路徑，以及公證本身。這些要等 Apple Developer Program 帳號那邊的憑證與 app-specific password 就緒才能跑。
+
 ---
 
 ## 目前可用功能

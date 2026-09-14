@@ -63,13 +63,26 @@ else
 fi
 
 # Inside out: nested code must already be signed when its container is.
+# --preserve-metadata=entitlements,requirements carries over whatever
+# entitlements each nested target (Sparkle's Updater, the Spotlight importer,
+# ...) already got from its own build step. Without it, --force replaces the
+# signature wholesale and silently strips them to nothing -- which either of
+# those needing an entitlement for its own XPC use would only surface later,
+# as a runtime failure, not a signing error.
 find "$app" -type d \( -name '*.framework' -o -name '*.app' -o -name '*.xpc' -o -name '*.mdimporter' \) \
     -not -path "$app" \
     | awk '{ print gsub("/","/"), $0 }' | sort -rn | cut -d' ' -f2- \
     | while read -r nested; do
-        codesign --force $extra --sign "$identity" "$nested"
+        codesign --force $extra --preserve-metadata=entitlements,requirements --sign "$identity" "$nested"
     done
-codesign --force $extra --sign "$identity" "$app"
+# The main app's own entitlements are not carried over from anywhere -- this
+# is the first and only time they are applied. Skim.entitlements is what lets
+# the hardened runtime tolerate the non-Apple-signed libraries bundled here
+# (com.apple.security.cs.disable-library-validation); without it under
+# --options runtime, notarization would succeed but the app would refuse to
+# launch (or refuse to load those libraries) on a machine that enforces the
+# hardened runtime's default library validation.
+codesign --force $extra --entitlements Skim.entitlements --sign "$identity" "$app"
 codesign --verify --deep --strict "$app"
 
 say "Package"
