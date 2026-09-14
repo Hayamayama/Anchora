@@ -971,6 +971,78 @@ func testContextSummaryIsOneLine() {
     expect(model.isContextExpandable == false, "but there is nothing to open when there is no text")
 }
 
+// MARK: - Photographs from an iPhone
+
+/// A phone hands over a twelve-megapixel photograph of a handout. Sending that
+/// as it arrives is slow and expensive and reads no better, so it is scaled
+/// down -- but never up, because enlarging a small photo only costs money.
+func testPhotoScaling() {
+    expectEqual(AnchoraCapture.photoScale(width: 4032.0, height: 3024.0), 2048.0 / 4032.0,
+                "a large photo is scaled by its longest side")
+    expectEqual(AnchoraCapture.photoScale(width: 3024.0, height: 4032.0), 2048.0 / 4032.0,
+                "portrait or landscape makes no difference")
+    expectEqual(AnchoraCapture.photoScale(width: 800.0, height: 600.0), 1.0,
+                "a photo already smaller than the ceiling is left alone")
+    expectEqual(AnchoraCapture.photoScale(width: 2048.0, height: 1000.0), 1.0,
+                "and one exactly at it is not touched either")
+    expectEqual(AnchoraCapture.photoScale(width: 0.0, height: 0.0), 1.0,
+                "an empty image does not divide by zero")
+}
+
+/// End to end on the image itself: what goes to the model is a JPEG data URL
+/// at a sane size, whatever the phone produced.
+///
+/// The fixtures are built from an explicit bitmap rather than by drawing into
+/// an NSImage, because lockFocus allocates a backing store at the screen's
+/// scale -- a "300 point" image is 600 pixels on this display, and the scaling
+/// here is rightly about pixels.
+func makePhoto(pixelsWide: Int, pixelsHigh: Int) -> NSImage {
+    let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: pixelsWide, pixelsHigh: pixelsHigh,
+                               bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                               colorSpaceName: .calibratedRGB, bytesPerRow: 0, bitsPerPixel: 32)!
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+    NSColor.white.setFill()
+    NSRect(x: 0, y: 0, width: pixelsWide, height: pixelsHigh).fill()
+    NSColor.black.setFill()
+    NSRect(x: 10, y: 10, width: pixelsWide / 3, height: pixelsHigh / 3).fill()
+    NSGraphicsContext.restoreGraphicsState()
+
+    let image = NSImage(size: NSSize(width: pixelsWide, height: pixelsHigh))
+    image.addRepresentation(rep)
+    return image
+}
+
+func decodePhoto(_ url: String?) -> NSBitmapImageRep? {
+    let prefix = "data:image/jpeg;base64,"
+    guard let url, url.hasPrefix(prefix),
+          let data = Data(base64Encoded: String(url.dropFirst(prefix.count)))
+    else { return nil }
+    return NSBitmapImageRep(data: data)
+}
+
+func testPhotoDataURL() {
+    let url = AnchoraCapture.photoDataURL(from: makePhoto(pixelsWide: 4032, pixelsHigh: 3024))
+    expect(url?.hasPrefix("data:image/jpeg;base64,") ?? false,
+           "a photograph becomes a JPEG data URL, which is what the API takes")
+    guard let rep = decodePhoto(url) else {
+        return expect(false, "and the payload decodes back to an image")
+    }
+    expectEqual(rep.pixelsWide, 2048, "scaled to the ceiling on its longest side")
+    expectEqual(rep.pixelsHigh, 1536, "keeping its aspect ratio")
+
+    guard let small = decodePhoto(AnchoraCapture.photoDataURL(from: makePhoto(pixelsWide: 300, pixelsHigh: 200)))
+    else { return expect(false, "a small photograph still works") }
+    expectEqual(small.pixelsWide, 300, "and is passed through at its own size rather than enlarged")
+
+    guard let portrait = decodePhoto(AnchoraCapture.photoDataURL(from: makePhoto(pixelsWide: 3024, pixelsHigh: 4032)))
+    else { return expect(false, "a portrait photograph works") }
+    expectEqual(portrait.pixelsHigh, 2048, "the longest side is the one that meets the ceiling")
+
+    expect(AnchoraCapture.photoDataURL(from: NSImage(size: .zero)) == nil,
+           "an empty image produces nothing rather than an empty attachment")
+}
+
 // MARK: - Capture geometry
 
 /// Two things have to be undone before a page rectangle matches what drawing
@@ -1184,6 +1256,8 @@ enum AnchoraCoreTests {
         testNestedEmphasis()
         testTextQualityHeuristic()
         testRecognitionLanguageResolution()
+        testPhotoScaling()
+        testPhotoDataURL()
         testRenderRectUnrotatedPage()
         testRenderRectSubtractsTheBoxOrigin()
         testRenderRectRotations()

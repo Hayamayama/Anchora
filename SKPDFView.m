@@ -123,6 +123,8 @@ NSString *SKPDFViewReadingBarDidChangeNotification = @"SKPDFViewReadingBarDidCha
 NSString *SKPDFViewSelectionChangedNotification = @"SKPDFViewSelectionChangedNotification";
 NSString *SKPDFViewAISelectionAreaChangedNotification = @"SKPDFViewAISelectionAreaChangedNotification";
 NSString *SKPDFViewAIImageSelectionAreaChangedNotification = @"SKPDFViewAIImageSelectionAreaChangedNotification";
+NSString *SKPDFViewDidImportImageNotification = @"SKPDFViewDidImportImageNotification";
+NSString *SKPDFViewImportedImageKey = @"SKPDFViewImportedImage";
 NSString *SKPDFViewMagnificationChangedNotification = @"SKPDFViewMagnificationChangedNotification";
 NSString *SKPDFViewPacerStartedOrStoppedNotification = @"SKPDFViewPacerStartedOrStoppedNotification";
 
@@ -2029,6 +2031,38 @@ enum {
     [self setCursorForMouse:nil];
 }
 
+#pragma mark Continuity Camera
+
+// Photographing a handout, a whiteboard, or a page of a book that is not a PDF
+// and asking about it is the same question this app already answers about a
+// dragged region -- it just starts on paper.  Continuity Camera arrives through
+// the Services machinery rather than through an API of its own: AppKit walks
+// the responder chain asking who can receive an image, and only offers the
+// device menu when somebody says yes.
+
+- (BOOL)readSelectionFromPasteboard:(NSPasteboard *)pboard {
+    NSImage *image = [[NSImage alloc] initWithPasteboard:pboard];
+    if (image == nil)
+        return NO;
+    [[NSNotificationCenter defaultCenter] postNotificationName:SKPDFViewDidImportImageNotification
+                                                        object:self
+                                                      userInfo:@{ SKPDFViewImportedImageKey: image }];
+    return YES;
+}
+
+/// AppKit replaces an item carrying this identifier with the nearby devices and
+/// their Take Photo / Scan Documents entries, and removes it when there are
+/// none, so nothing here has to know what is on the desk.
+- (void)addImportFromDeviceItemToMenu:(NSMenu *)menu {
+    NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:NSLocalizedString(@"Import from iPhone or iPad", @"Menu item title")
+                                                  action:nil
+                                           keyEquivalent:@""];
+    [item setIdentifier:NSMenuItemImportFromDeviceIdentifier];
+    [menu addItem:item];
+}
+
+#pragma mark -
+
 - (NSMenu *)menuForEvent:(NSEvent *)theEvent {
     NSMenu *menu = [super menuForEvent:theEvent];
     NSMenu *submenu;
@@ -2270,6 +2304,12 @@ enum {
         
     }
     
+    // Appended without a separator of its own: AppKit takes this item away
+    // again when no device is nearby, and a separator added beside it would be
+    // left dangling at the bottom of every context menu on every Mac with no
+    // iPhone next to it.
+    [self addImportFromDeviceItemToMenu:menu];
+    
     return menu;
 }
 
@@ -2505,6 +2545,13 @@ enum {
         return self;
     }
     if ([[self currentSelection] hasCharacters] && returnType == nil && ([sendType isEqualToString:NSPasteboardTypeString] || [sendType isEqualToString:NSPasteboardTypeRTF])) {
+        return self;
+    }
+    // The receiving direction, which is how Continuity Camera reaches an app:
+    // nothing is being sent out, an image is being handed in.  Saying yes here
+    // is what makes the Import from iPhone menu offer anything at all.
+    if (([sendType length] == 0) &&
+        ([returnType isEqualToString:NSPasteboardTypeTIFF] || [returnType isEqualToString:NSPasteboardTypePNG])) {
         return self;
     }
     return [super validRequestorForSendType:sendType returnType:returnType];

@@ -163,6 +163,11 @@ public final class AnchoraPrompts: NSObject {
         "Complete PDF attached: \(pageCount) pages"
     }
 
+    @objc public static let photoContextText =
+        "A photograph taken with the reader's iPhone is attached. It is not part of this PDF."
+    @objc public static let photoReadyMessage =
+        "Photo from iPhone ready — ask about what it shows."
+
     @objc public static let regionImageContextText = "A visual region of the PDF is attached."
     @objc public static let pageImageContextText = "A complete rendered image of this PDF page is attached."
     @objc public static let documentContextText = "The complete original PDF is attached."

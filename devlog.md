@@ -726,6 +726,31 @@ harness 沒辦法假造真實輸入法的「確認」動作（它背後沒有真
 
 版本 `1.7.4 (19)`；測試 347 個檢查。
 
+### 1.8.0 — 用 iPhone 拍進來
+
+在 PDF 上按右鍵，選單最後多了「Import from iPhone or iPad」—— 就是 Word 和備忘錄裡那個。拍一張講義、白板、或一頁不是 PDF 的書，照片直接變成 AI 的 context，側欄打開、游標落在輸入框，可以直接問。
+
+**它跟既有的「Command-Option 拖曳一塊區域」是同一條路。** 問題本身沒有變 —— 「這個東西是什麼意思」—— 只是這次它從紙上開始。所以照片走的是同一個 `AnchoraSelection.image(...)`，錨定在讀者當下的頁面上（因此答案仍然可以 Pin：照片是文件旁邊的東西，但人還在文件裡）。
+
+**Continuity Camera 沒有自己的 API，它走 Services 那套。** AppKit 沿著 responder chain 問「誰可以接收一張圖片」，只有在有人回答可以的時候才會提供裝置選單。所以實作是兩半：
+
+- `validRequestorForSendType:returnType:` 加上**接收**方向。Skim 本來就實作了這個方法的**送出**方向（把選取內容交給 Service），所以是併進既有實作而不是另外寫一個 —— 第一次寫成獨立方法時編譯器直接報 duplicate declaration。
+- `readSelectionFromPasteboard:` 收到圖片後發一個 notification，側欄接起來。
+
+選單項本身只要把 identifier 設成 `NSMenuItemImportFromDeviceIdentifier`，AppKit 會自己換成附近的裝置與它們的 Take Photo／Scan Documents，沒有裝置時整項拿掉 —— 程式碼不需要知道桌上有什麼。
+
+**刻意沒有加分隔線。** 沒有裝置時 AppKit 會把那一項移走，但它不會移走旁邊的分隔線；加了的話，每一台沒有 iPhone 在旁邊的 Mac 上，每一個右鍵選單底部都會多一條孤零零的線。
+
+**照片會先縮小。** 手機給的是一千兩百萬像素，直接送又慢又貴，而且答得不會比較好；最長邊壓到 2048，JPEG 0.82。**但永遠不放大** —— 一張本來就小的照片放大只是多花錢。
+
+11 個新檢查（347 → 358）：縮放比例只看最長邊、直的橫的一樣、已經小於上限的不動、正好在上限的不動、空圖不會除以零，以及完整的一輪 —— 4032×3024 進去，解回來是 2048×1536 的 JPEG。
+
+其中一個檢查抓到我自己的錯誤假設：測試原本用 `NSImage(size:)` 加 `lockFocus` 造圖，結果在 Retina 上 backing store 是 2 倍，「300 點」的圖其實是 600 像素。縮放本來就該看像素，所以錯的是測試的前提，改成直接用 `NSBitmapImageRep` 造出確定的像素尺寸。
+
+**端到端沒有驗過，也驗不了：** 這台機器旁邊沒有 iPhone，而那個選單項只有在有裝置的時候才會出現。可以確定的是圖片處理那一半（有測試）和接線本身（編譯通過、responder 那一半併進了 Skim 原本就在用的方法）。**選單有沒有出現、拍完照片有沒有進來，要你自己用手機試。** 如果選單裡沒看到那一項，先在 PDF 上點一下再按右鍵 —— AppKit 是從 first responder 開始找接收者的。
+
+版本 `1.8.0 (20)`；測試 358 個檢查。
+
 ---
 
 ## 目前可用功能
@@ -747,6 +772,7 @@ harness 沒辦法假造真實輸入法的「確認」動作（它背後沒有真
 - 輸入框 Return 送出、Shift-Return 換行，並隨內容長高（約六行後改為捲動）。
 - CONTEXT 為一行狀態；抽取出來的文字可點開 popover 檢查全文。
 - 空白啟動（或 Dock 點擊而沒有視窗）時自動叫出開檔面板，不再是一片空白。
+- PDF 上按右鍵可用 Continuity Camera 從 iPhone 拍照或掃描，照片直接成為 AI context。
 - 退出時若有未儲存的修改會詢問，不再靜悄悄地丟掉標註。
 - 雜念收納：⌘⇧J 從任何地方寫一行，記下當時的文件與頁碼；側欄 Inbox 抽屜管理。
 - Study map 與 Paper map 存在本機，重開文件時自動還原。
@@ -812,8 +838,8 @@ codesign --verify --deep --strict --verbose=2 Distribution/PDFBuddy.app
 ## 發行位置
 
 - Release app：`Distribution/Anchora.app`
-- Release 附件：`Distribution/Anchora-1.7.4-macos-arm64.zip`（8.8 MB，SHA-256 `4f923709…`）
-- 版本：`1.7.4 (19)`
+- Release 附件：`Distribution/Anchora-1.8.0-macos-arm64.zip`（8.8 MB，SHA-256 `902135fd…`）
+- 版本：`1.8.0 (20)`
 - 最低系統：macOS 14.0
 - 大小：約 17 MB
 - Bundle ID：`com.kris.anchora`

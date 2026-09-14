@@ -18,6 +18,10 @@ public final class AnchoraCapture: NSObject {
     /// produces an impractically large request for an unusually large page.
     private static let renderScale: CGFloat = 2.0
     private static let maximumPixelsPerSide: CGFloat = 4096.0
+    /// Lower than a rendered page's ceiling.  A page is rendered at exactly the
+    /// size it is worth; a photograph arrives at whatever the phone's sensor
+    /// felt like, and past this nothing legible is gained.
+    private static let maximumPhotoPixelsPerSide: CGFloat = 2048.0
     /// A region is inset outward slightly: a rectangle dragged tight around a
     /// line otherwise clips its ascenders and descenders.
     private static let regionBleed: CGFloat = 3.0
@@ -100,6 +104,43 @@ public final class AnchoraCapture: NSObject {
     @objc public static func regionImageDataURL(page: PDFPage, box: PDFDisplayBox, rect: NSRect) -> String? {
         dataURL(render(page: page, box: box, rect: bleed(rect, on: page, box: box), scale: renderScale),
                 compression: 0.82)
+    }
+
+    /// A photograph handed over by an iPhone, for "here is the thing in front
+    /// of me" -- a handout, a whiteboard, a page of a book that is not a PDF.
+    ///
+    /// Downscaled first.  A phone photograph arrives at twelve megapixels,
+    /// which costs a great deal to send and answers no better than the same
+    /// picture at a sensible size.
+    @objc public static func photoDataURL(from image: NSImage) -> String? {
+        guard let source = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+        let sourceWidth = CGFloat(source.width)
+        let sourceHeight = CGFloat(source.height)
+        guard sourceWidth > 0.0, sourceHeight > 0.0 else { return nil }
+
+        let scale = photoScale(width: sourceWidth, height: sourceHeight)
+        let pixelsWide = max(Int((sourceWidth * scale).rounded()), 1)
+        let pixelsHigh = max(Int((sourceHeight * scale).rounded()), 1)
+        guard let imageRep = NSBitmapImageRep(bitmapDataPlanes: nil,
+                                              pixelsWide: pixelsWide, pixelsHigh: pixelsHigh,
+                                              bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                              isPlanar: false, colorSpaceName: .calibratedRGB,
+                                              bitmapFormat: [], bytesPerRow: 0, bitsPerPixel: 32),
+              let context = NSGraphicsContext(bitmapImageRep: imageRep)?.cgContext
+        else { return nil }
+
+        context.setFillColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0)
+        context.fill(CGRect(x: 0, y: 0, width: pixelsWide, height: pixelsHigh))
+        context.draw(source, in: CGRect(x: 0, y: 0, width: pixelsWide, height: pixelsHigh))
+        return dataURL(imageRep, compression: 0.82)
+    }
+
+    /// Never upscales: a small photograph is already as much detail as there
+    /// is, and enlarging it only makes it expensive.
+    static func photoScale(width: CGFloat, height: CGFloat) -> CGFloat {
+        let longest = max(width, height)
+        guard longest > 0.0 else { return 1.0 }
+        return min(1.0, maximumPhotoPixelsPerSide / longest)
     }
 
     /// A whole page, for a visual summary that must not depend on the text layer.
