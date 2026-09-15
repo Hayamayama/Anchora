@@ -33,3 +33,10 @@ Distribution/
 Pods/
 Carthage/Build/
 *.log
+
+# An Xcode Archive's install root (Product > Archive, or Distribute App),
+# when pointed at the project directory instead of the default archives
+# location. Not build output this repo produces itself, and at hundreds of
+# files per archive, one committed by accident is easy to miss in review.
+*.xcarchive/
+/Anchora [0-9]*.[0-9]*.[0-9]*/

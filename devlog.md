@@ -832,6 +832,38 @@ Sparkle 的 Updater.app：重簽前後都是空的 entitlements dict
 
 **還沒驗到的：** 真正的 `--options runtime` + Developer ID 簽章路徑，以及公證本身。這些要等 Apple Developer Program 帳號那邊的憑證與 app-specific password 就緒才能跑。
 
+### 發行腳本：實際跑過一次公證，抓到真正的缺口
+
+Apple Developer Program 帳號生效、Developer ID Application 憑證建好、notarytool 認證也存好之後，第一次真的送出去公證，結果是 `status: Invalid`。拉出 `xcrun notarytool log` 才看到具體問題，跟前一輪「entitlements 被清空」是完全不同的另一個洞。
+
+**上一輪的修法漏了五個執行檔。** 舊的巢狀簽章迴圈只抓 `.framework`／`.app`／`.xpc`／`.mdimporter` 四種目錄型 bundle，但公證檢查的是**每一個 Mach-O 執行檔**，不是只看 bundle。實際列出 bundle 裡全部 11 個執行檔，對照公證回報的錯誤，缺口精準對上：
+
+- `Contents/SharedSupport/skimpdf`、`skimnotes` —— 兩個裸執行檔，**根本沒包在任何 bundle 裡**，舊迴圈連碰都碰不到。
+- `Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate` —— 雖然人在 `.framework` 目錄底下，但它是 framework 自己主執行檔以外**另一個獨立的輔助工具**，簽 `Sparkle.framework` 這個 bundle 不會連帶簽到它。
+- `SkimTransitions.plugin`、`Skim.qlgenerator` —— 這兩種 bundle 類型（`.plugin`、`.qlgenerator`）舊清單根本沒列進去。
+
+公證回報的錯誤也精準對應：這五個都是「未用有效 Developer ID 簽章」與「簽章缺 secure timestamp」（因為它們從頭到尾帶的都是 Xcode 建置時給的 ad-hoc 簽章，沒人碰過），其中 `skimpdf`／`skimnotes` 還多了「帶有 get-task-allow entitlement」——這是 Xcode 對 ad-hoc 建置附加的除錯用權限，正式散布版本不該有。
+
+**修法比想像中更簡單，而不是更保守。** 一開始想用 `--preserve-metadata=entitlements` 把每個東西原本的 entitlements 保留下來，但這次的錯誟訊息剛好證明那是錯的方向——`skimpdf`／`skimnotes` 原本的 entitlements 裡就帶著問題本身（get-task-allow），保留等於把公證會拒絕的理由原封不動搬過去。查證後發現更正確的做法反而更直接：**除了主 app 需要 `Skim.entitlements`（給 hardened runtime 用的 `disable-library-validation`）之外，其餘一律不帶任何 entitlements**——這個 app 沒有 sandboxed，Sparkle 內部的東西本來就不需要任何特殊權限，`Updater.app` 重簽前後 entitlements 都是空的字典就是證據。
+
+加了一個新的簽章步驟，跑在巢狀 bundle 迴圈之前：找出 bundle 裡**所有**設了可執行位元、且 `file` 認得是 Mach-O 的檔案，逐一簽署，不分它在不在被辨識的 bundle 類型裡。之後巢狀 bundle 迴圈再補上 `.plugin`／`.qlgenerator` 兩種類型，跑完換外層 app。一個 bundle 的主執行檔會先被這個新步驟簽過一次、隨後又被 bundle 層級的簽章再簽一次——多做一次但無害，換來的是不用去猜「這個副檔名算不算 bundle」。
+
+**用 ad-hoc 簽章實測驗證（這台機器上仍然沒有真的送公證，因為那要花 Apple 的公證額度且需要網路等候）：**
+
+```
+簽章前：skimpdf / skimnotes 的 get-task-allow entitlement 都是 1（存在）
+簽章前：五個目標的 Signature 全是 adhoc
+
+簽章後：五個目標的 get-task-allow entitlement 全部變成 0
+簽章後：「Sign ad-hoc」那段輸出列出全部 12 個路徑（11 個執行檔 + 外層 app）都被 replacing existing signature
+codesign --verify --deep --strict：PASSED
+主 app 的 Skim.entitlements 兩個 key 沒有被這次改動動到
+```
+
+375 個既有檢查照跑，孤兒方法檢查照過——這次改動只碰簽章腳本，沒有動到 app 本身的程式碼。
+
+**還沒驗到的：** 真正送到 Apple 公證伺服器、拿到 `status: Accepted`、以及 `stapler staple` 真的把票證蓋上去。上面的驗證只能證明「這次找到的五個缺口確實被補上」，公證服務本身還可能發現別的問題（例如某個框架版本本身的簽章要求變動）。下一次實際送出去的結果，麻煩把完整輸出（尤其是 `status` 那一行，失敗的話還有 submission id）貼回來，才能繼續往下查。
+
 ---
 
 ## 目前可用功能

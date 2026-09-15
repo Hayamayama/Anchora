@@ -62,26 +62,44 @@ else
     say "Sign ad-hoc (set ANCHORA_SIGN_IDENTITY for a distributable build)"
 fi
 
+# Notarization inspects every embedded Mach-O independently, not only the
+# four bundle types below happen to nest as their own directories. Sparkle's
+# Autoupdate sits as a bare binary beside its framework's own dylib rather
+# than wrapped in a bundle of its own, and Skim ships two command-line tools
+# (skimpdf, skimnotes) the same way -- signing the directory that contains
+# them never reaches in and re-signs a loose file sitting inside it. Left
+# alone, all three kept whatever ad-hoc signature Xcode's own build gave
+# them: no Developer ID, no secure timestamp, and for the two command-line
+# tools, the debug-only get-task-allow entitlement Xcode attaches to an
+# ad-hoc build -- which is exactly what the notary service rejected the
+# first time this ran. Signing every Mach-O found, unconditionally and with
+# no entitlements of its own, before anything else, is what actually reaches
+# all of it; a bundle's own main executable gets its final signature anyway
+# the moment the bundle itself is signed next.
+find "$app" -type f -perm -u+x | while read -r candidate; do
+    file "$candidate" | grep -q "Mach-O" || continue
+    codesign --force $extra --sign "$identity" "$candidate"
+done
+
 # Inside out: nested code must already be signed when its container is.
-# --preserve-metadata=entitlements,requirements carries over whatever
-# entitlements each nested target (Sparkle's Updater, the Spotlight importer,
-# ...) already got from its own build step. Without it, --force replaces the
-# signature wholesale and silently strips them to nothing -- which either of
-# those needing an entitlement for its own XPC use would only surface later,
-# as a runtime failure, not a signing error.
-find "$app" -type d \( -name '*.framework' -o -name '*.app' -o -name '*.xpc' -o -name '*.mdimporter' \) \
+# .plugin and .qlgenerator are bundle types too (SkimTransitions, the Quick
+# Look generator) and were missing from this list, which is why signing
+# their *contents* above still left the bundle-level signature stale.
+find "$app" -type d \( -name '*.framework' -o -name '*.app' -o -name '*.xpc' -o -name '*.mdimporter' -o -name '*.plugin' -o -name '*.qlgenerator' \) \
     -not -path "$app" \
     | awk '{ print gsub("/","/"), $0 }' | sort -rn | cut -d' ' -f2- \
     | while read -r nested; do
-        codesign --force $extra --preserve-metadata=entitlements,requirements --sign "$identity" "$nested"
+        codesign --force $extra --sign "$identity" "$nested"
     done
-# The main app's own entitlements are not carried over from anywhere -- this
-# is the first and only time they are applied. Skim.entitlements is what lets
-# the hardened runtime tolerate the non-Apple-signed libraries bundled here
-# (com.apple.security.cs.disable-library-validation); without it under
-# --options runtime, notarization would succeed but the app would refuse to
-# launch (or refuse to load those libraries) on a machine that enforces the
-# hardened runtime's default library validation.
+# The main app is the one piece that needs its own entitlements. Everything
+# nested here is unsandboxed and needs none -- confirmed by Sparkle's own
+# Updater.app carrying an empty entitlements set even from Xcode's build --
+# but the app itself has to tell the hardened runtime to tolerate the
+# non-Apple-signed libraries bundled inside it
+# (com.apple.security.cs.disable-library-validation), or it refuses to
+# launch wherever that runtime enforces its defaults: a failure notarization
+# itself would not catch, since it checks signatures, not whether the app
+# can actually start.
 codesign --force $extra --entitlements Skim.entitlements --sign "$identity" "$app"
 codesign --verify --deep --strict "$app"
 
