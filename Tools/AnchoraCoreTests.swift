@@ -1258,6 +1258,239 @@ func testTurnAccumulatesItsAnswer() {
     expect(turn.isMap && turn.mapKind == .paper, "the turn remembers which navigator its answer belongs in")
 }
 
+// MARK: - Study map: self-test checklist
+
+/// The self-test section is found by its fixed heading, not by being last --
+/// a model that skips or reorders the closing sections should not have some
+/// other block mistaken for it.
+func testSelfTestSectionIsFoundByHeading() {
+    let response = """
+    ## 1. Gas exchange
+    a [PDF p. 2]
+    ## Shortest path if short of time
+    Read pages 2-4.
+    ## Self-test questions
+    1. What drives gas exchange across the alveolar membrane?
+    2. Why does ventilation-perfusion mismatch lower oxygenation?
+    """
+    let sections = AnchoraStudyMap.sections(fromResponse: response, pageLabels: labels)
+    let index = AnchoraStudyMap.selfTestSectionIndex(in: sections)
+    expect(index != NSNotFound, "the self-test section is found")
+    expectEqual(sections[index].title, "Self-test questions", "matched by its fixed heading")
+
+    // Matched case-insensitively: the model is only asked to spell it exactly,
+    // not to capitalise it exactly the same way every time.
+    let lowercased = AnchoraMapSection(title: "self-test questions", text: "x", pageIndexes: [])
+    expectEqual(AnchoraStudyMap.selfTestSectionIndex(in: [lowercased]), 0, "matching ignores case")
+
+    expectEqual(AnchoraStudyMap.selfTestSectionIndex(in: []), NSNotFound, "nothing to find in an empty map")
+    let noSelfTest = [AnchoraMapSection(title: "Gas exchange", text: "x", pageIndexes: [])]
+    expectEqual(AnchoraStudyMap.selfTestSectionIndex(in: noSelfTest), NSNotFound,
+                "and nothing is mistaken for it when the heading never appears")
+}
+
+/// Each question becomes its own checkable line, not one block to mark done
+/// as a whole -- the point is noticing which ones cannot actually be answered.
+func testSelfTestQuestionsAreSplitPerLine() {
+    let numbered = "1. What drives gas exchange?\n2. Why does V/Q mismatch matter?\n3. Define compliance."
+    expectEqual(AnchoraStudyMap.selfTestQuestions(fromSectionText: numbered).count, 3,
+                "one item per numbered line")
+    expectEqual(AnchoraStudyMap.selfTestQuestions(fromSectionText: numbered).first,
+                "What drives gas exchange?", "the marker is stripped, the question is not")
+
+    let bulleted = "- What drives gas exchange?\n- Why does V/Q mismatch matter?"
+    expectEqual(AnchoraStudyMap.selfTestQuestions(fromSectionText: bulleted).count, 2,
+                "a bulleted list works the same way")
+
+    expectEqual(AnchoraStudyMap.selfTestQuestions(fromSectionText: ""), [],
+                "nothing to ask from empty text")
+
+    // A section with real content but no numbered or bulleted line -- plain
+    // sentences -- is shown as one item rather than an empty checklist.
+    let prose = "Explain why ventilation-perfusion mismatch lowers oxygenation."
+    expectEqual(AnchoraStudyMap.selfTestQuestions(fromSectionText: prose), [prose],
+                "prose with no list markers falls back to one whole item")
+}
+
+// MARK: - Store: self-test checklist persistence
+
+/// Rebuilding a study map re-parses the same response from scratch, which
+/// looks like a brand new checklist every time. Matching by the question's
+/// own text, not its position, is what lets a checkmark survive that.
+func testSelfTestChecklistPersistsByText() {
+    let store = makeStore("selftest")
+    let path = "/Users/someone/resp.pdf"
+
+    store.setSelfTestQuestions(["What drives gas exchange?", "Define compliance."],
+                               documentPath: path, title: "resp.pdf")
+    let first = store.selfTestQuestions(documentPath: path)
+    expectEqual(first.count, 2, "both questions are stored")
+    expect(first.allSatisfy { $0.isDone == false }, "nothing is checked yet")
+
+    guard let gasExchange = first.first(where: { $0.text == "What drives gas exchange?" }) else {
+        return expect(false, "the question is findable by its own text")
+    }
+    store.setSelfTestItem(id: gasExchange.id, done: true, documentPath: path)
+    expect(store.selfTestQuestions(documentPath: path).first(where: { $0.id == gasExchange.id })?.isDone == true,
+           "checking one sticks")
+
+    // Rebuilt with the same two questions plus a new one.
+    store.setSelfTestQuestions(["What drives gas exchange?", "Define compliance.", "Explain shunt."],
+                               documentPath: path, title: "resp.pdf")
+    let second = store.selfTestQuestions(documentPath: path)
+    expectEqual(second.count, 3, "the new question is added")
+    expect(second.first(where: { $0.text == "What drives gas exchange?" })?.isDone == true,
+           "an unchanged question keeps its checkmark across a rebuild")
+    expect(second.first(where: { $0.text == "Explain shunt." })?.isDone == false,
+           "a genuinely new question starts unchecked")
+
+    // Rebuilt again with that question gone.
+    store.setSelfTestQuestions(["Define compliance."], documentPath: path, title: "resp.pdf")
+    expectEqual(store.selfTestQuestions(documentPath: path).count, 1,
+                "a question dropped from the plan is dropped from the checklist too")
+
+    expectEqual(store.selfTestQuestions(documentPath: "").count, 0, "an unsaved document has nothing")
+    store.setSelfTestItem(id: "not-a-real-id", done: true, documentPath: path)
+    expectEqual(store.selfTestQuestions(documentPath: path).count, 1,
+                "checking an id that does not exist changes nothing")
+}
+
+// MARK: - Store: review queue
+
+/// A freshly queued item is not due today -- Recall and Quiz already gave
+/// their feedback once, in the transcript; the queue's job is to bring it
+/// back later, not immediately.
+func testReviewItemStartsInTheFuture() {
+    let store = makeStore("review-future")
+    guard let item = store.addReviewItem(prompt: "Recall check — p. 4", correction: "**Right** — ...",
+                                         documentPath: "/x.pdf", title: "x.pdf", sourcePage: 4)
+    else { return expect(false, "adding a review item succeeds") }
+
+    expect(store.dueReviewItems(asOf: Date()).isEmpty, "not due the moment it is queued")
+    expect(store.dueReviewItems(asOf: Date().addingTimeInterval(25 * 3600)).contains { $0.id == item.id },
+           "but due after the first interval has passed")
+    expectEqual(item.stage, 0, "a new item starts at the first stage")
+
+    expect(store.addReviewItem(prompt: "x", correction: "", documentPath: "/x.pdf", title: "x", sourcePage: 1) == nil,
+           "an empty correction is not worth queuing")
+    expect(store.addReviewItem(prompt: "x", correction: "y", documentPath: "", title: "x", sourcePage: 1) == nil,
+           "neither is one with nowhere to file it")
+}
+
+/// "Knew it" pushes the schedule further out; "still shaky" resets it -- the
+/// only two facts a second look produces.
+func testAdvanceReviewItem() {
+    let store = makeStore("review-advance")
+    let path = "/y.pdf"
+    guard let item = store.addReviewItem(prompt: "Quiz — p. 2", correction: "1. Right.", documentPath: path,
+                                         title: "y.pdf", sourcePage: 2)
+    else { return expect(false, "adding a review item succeeds") }
+
+    store.advanceReviewItem(id: item.id, documentPath: path, gotIt: true)
+    let advanced = store.allReviewItems().first { $0.id == item.id }
+    expectEqual(advanced?.stage, 1, "knowing it moves to the next stage")
+    expect((advanced?.dueAt ?? .distantPast) > Date().addingTimeInterval(2 * 24 * 3600),
+           "and is not due again for a few days")
+
+    store.advanceReviewItem(id: item.id, documentPath: path, gotIt: false)
+    let reset = store.allReviewItems().first { $0.id == item.id }
+    expectEqual(reset?.stage, 0, "getting it wrong resets to the first stage")
+
+    // Advancing past the end of the schedule holds at the last stage rather
+    // than reading off the end of the array.
+    for _ in 0..<10 {
+        store.advanceReviewItem(id: item.id, documentPath: path, gotIt: true)
+    }
+    expectEqual(store.allReviewItems().first { $0.id == item.id }?.stage,
+                AnchoraStore.reviewIntervalDays.count - 1,
+                "the schedule has a last stage, not an unbounded one")
+
+    store.advanceReviewItem(id: "not-a-real-id", documentPath: path, gotIt: true)
+    expectEqual(store.allReviewItems().count, 1, "advancing an unknown id changes nothing")
+}
+
+/// The queue is drawn from every document that has anything in it, not just
+/// whichever one happens to be open.
+func testReviewQueueSpansDocuments() {
+    let store = makeStore("review-global")
+    store.addReviewItem(prompt: "Recall — p. 1", correction: "a", documentPath: "/a.pdf", title: "a.pdf", sourcePage: 1)
+    store.addReviewItem(prompt: "Recall — p. 9", correction: "b", documentPath: "/b.pdf", title: "b.pdf", sourcePage: 9)
+
+    let all = store.allReviewItems()
+    expectEqual(all.count, 2, "both documents contribute to the same queue")
+    expect(Set(all.map(\.documentPath)) == Set(["/a.pdf", "/b.pdf"]), "each item still knows its own document")
+
+    guard let fromA = all.first(where: { $0.documentPath == "/a.pdf" }) else {
+        return expect(false, "the item from a.pdf is findable")
+    }
+    store.deleteReviewItem(id: fromA.id, documentPath: "/a.pdf")
+    let remaining = store.allReviewItems()
+    expectEqual(remaining.count, 1, "deleting one leaves the other untouched")
+    expectEqual(remaining.first?.documentPath, "/b.pdf", "specifically the one not deleted")
+}
+
+/// Items due longest come first: the one waiting the longest is the one to
+/// look at first.
+func testDueReviewItemsAreOldestFirst() {
+    let store = makeStore("review-order")
+    store.addReviewItem(prompt: "one", correction: "x", documentPath: "/a.pdf", title: "a", sourcePage: 1)
+    store.addReviewItem(prompt: "two", correction: "x", documentPath: "/b.pdf", title: "b", sourcePage: 1)
+    let farFuture = Date().addingTimeInterval(60 * 24 * 3600)
+    let due = store.dueReviewItems(asOf: farFuture)
+    expectEqual(due.count, 2, "both are due that far out")
+    expect(due[0].dueAt <= due[1].dueAt, "sorted with the longest-waiting item first")
+}
+
+// MARK: - Map model: self-test checklist
+
+/// Presenting a new map clears whatever checklist state belonged to the
+/// previous one -- it is set again, separately, once the store has answered.
+func testMapModelResetsSelfTestOnPresent() {
+    let model = AnchoraMapModel()
+    let sections = [AnchoraMapSection(title: "Self-test questions", text: "1. Q?", pageIndexes: [])]
+    model.present(sections, kind: .study)
+    model.setSelfTestItems([AnchoraChecklistItem(id: "1", text: "Q?", isDone: false)], sectionIndex: 0)
+    expect(model.selfTestItems.isEmpty == false, "items are set")
+
+    model.present(sections, kind: .study)
+    expect(model.selfTestItems.isEmpty, "presenting again clears them until the store answers again")
+    expect(model.isSelfTestSelected == false, "and nothing is selected as the self-test section yet")
+}
+
+/// `NSNotFound` means "no self-test section this time" and must not be stored
+/// as if it were a real index.
+func testMapModelIgnoresMissingSelfTestSection() {
+    let model = AnchoraMapModel()
+    model.present([AnchoraMapSection(title: "Gas exchange", text: "x", pageIndexes: [])], kind: .study)
+    model.setSelfTestItems([AnchoraChecklistItem(id: "1", text: "Q?", isDone: false)], sectionIndex: NSNotFound)
+    expect(model.selfTestItems.isEmpty, "NSNotFound is not treated as a real section")
+}
+
+/// Toggling flips the item locally and reports the change outward, so the
+/// AppKit host can persist it without the model reaching into the store on
+/// its own.
+func testMapModelTogglesSelfTestItem() {
+    let model = AnchoraMapModel()
+    model.present([AnchoraMapSection(title: "Self-test questions", text: "1. Q?", pageIndexes: [])], kind: .study)
+    let item = AnchoraChecklistItem(id: "q1", text: "Q?", isDone: false)
+    model.setSelfTestItems([item], sectionIndex: 0)
+
+    var reported: (String, Bool)?
+    model.onToggleSelfTestItem = { reported = ($0, $1) }
+    model.selectedIndex = 0
+    expect(model.isSelfTestSelected, "the only section is the self-test one")
+
+    model.toggleSelfTestItem(item)
+    expectEqual(model.selfTestItems.first?.isDone, true, "checked locally")
+    expect(reported?.0 == "q1" && reported?.1 == true, "and reported outward for the store to persist")
+
+    expectEqual(model.pickerTitle(for: model.sections[0], at: 0), "Self-test questions (1/1)",
+                "the picker shows progress once there is some")
+
+    model.toggleSelfTestItem(AnchoraChecklistItem(id: "not-here", text: "?", isDone: false))
+    expectEqual(model.selfTestItems.count, 1, "toggling an item that is not in the list does nothing")
+}
+
 // MARK: - Run
 
 // A multi-file swiftc invocation has no main.swift, so the entry point is
@@ -1332,6 +1565,16 @@ enum AnchoraCoreTests {
         testTurnCannotPinWithoutAnAnchorOrAnAnswer()
         testAnAnswerAnchoredToAPageCanBePinned()
         testTurnAccumulatesItsAnswer()
+        testSelfTestSectionIsFoundByHeading()
+        testSelfTestQuestionsAreSplitPerLine()
+        testSelfTestChecklistPersistsByText()
+        testReviewItemStartsInTheFuture()
+        testAdvanceReviewItem()
+        testReviewQueueSpansDocuments()
+        testDueReviewItemsAreOldestFirst()
+        testMapModelResetsSelfTestOnPresent()
+        testMapModelIgnoresMissingSelfTestSection()
+        testMapModelTogglesSelfTestItem()
 
         if failures == 0 {
             print("AnchoraCoreTests: \(checks) checks passed")

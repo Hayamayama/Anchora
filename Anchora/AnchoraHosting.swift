@@ -43,9 +43,9 @@ public final class AnchoraHosting: NSObject {
         hostingView(AnchoraChatView(model: model))
     }
 
-    /// The tab strip and whichever of the three faces is selected: the
-    /// transcript, the map, or the inbox.  One hosting view, so the sidebar
-    /// never has to compute how tall a map ought to be.
+    /// The tab strip and whichever of the four faces is selected: the
+    /// transcript, the map, the inbox, or the review queue.  One hosting
+    /// view, so the sidebar never has to compute how tall a map ought to be.
     ///
     /// `pageLabels` is captured when the view is built; the host rebuilds the
     /// root view through `updatePaneView(...)` when a new document is opened.
@@ -53,8 +53,9 @@ public final class AnchoraHosting: NSObject {
                                       chat: AnchoraChatModel,
                                       map: AnchoraMapModel,
                                       inbox: AnchoraInboxModel,
+                                      review: AnchoraReviewModel,
                                       pageLabels: [String]) -> NSView {
-        hostingView(AnchoraPaneView(pane: pane, chat: chat, map: map, inbox: inbox, pageLabels: pageLabels))
+        hostingView(AnchoraPaneView(pane: pane, chat: chat, map: map, inbox: inbox, review: review, pageLabels: pageLabels))
     }
 
     @objc public static func updatePaneView(_ view: NSView,
@@ -62,8 +63,9 @@ public final class AnchoraHosting: NSObject {
                                             chat: AnchoraChatModel,
                                             map: AnchoraMapModel,
                                             inbox: AnchoraInboxModel,
+                                            review: AnchoraReviewModel,
                                             pageLabels: [String]) {
         guard let hosting = view as? NSHostingView<AnchoraPaneView> else { return }
-        hosting.rootView = AnchoraPaneView(pane: pane, chat: chat, map: map, inbox: inbox, pageLabels: pageLabels)
+        hosting.rootView = AnchoraPaneView(pane: pane, chat: chat, map: map, inbox: inbox, review: review, pageLabels: pageLabels)
     }
 }

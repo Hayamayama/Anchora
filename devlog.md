@@ -866,6 +866,34 @@ codesign --verify --deep --strict：PASSED
 
 ---
 
+### 1.9.0 — 複習佇列，以及能打勾的自我測驗清單
+
+Recall 和 Quiz 用過幾週之後回頭看，發現一個浪費：每一次批改都是真正的訊號——哪裡答錯了、哪裡漏了——但那個訊號用完即丟，transcript 一捲過去就沒了。這一版把它接住。
+
+**每一次 Recall 或 Quiz 批改完成，自動進複習佇列。** 不分答對答錯全部收——要分辨這次是不是答對了，得去解析模型自己寫的那段散文，而漏掉一個真正答錯的項目，代價遠高於多收一個其實答對了的項目（複習一次已經會的東西，成本只是幾秒鐘）。
+
+排程是固定的五階：**1 天 → 3 天 → 7 天 → 14 天 → 30 天**，不是真的間隔重複演算法，就是「晚點再看一次，答對了就看得更少次，答錯了就重來」。側欄多了第四個分頁 `Review`，跟 `Inbox` 一樣是**跨文件的全域清單**——複習項目存的是**完整的批改內容原文**，跟當初在對話裡看到的一模一樣，複習就是重讀一次，沒有東西要重新生成。卡片上兩個按鈕：`Knew it` 把排程往後推一階，`Still shaky` 重置回第一階；另外有一個連結跳回原文件原頁碼，連結到別份文件會先開檔再跳頁。
+
+**Study map 的自我測驗，從純文字變成能打勾的清單。** 那一節內容其實一直都在（study map prompt 最後一段就是「讀完應該能默答的問題」），只是純文字看完就過去了。這次：
+
+- Prompt 把那一節的標題**固定成英文**「## Self-test questions」，跟 Paper map 八個固定英文標題同一招——不管回覆語言是中文還是英文，app 都能穩定找到是哪一節，而不是去猜「最後一節大概是它」。
+- 解析成逐條可勾選的項目，而不是整節一次勾完——重點是讓讀者注意到「這幾條我真的答不出來」，不是「我看過這份清單」。
+- **勾選狀態用題目文字本身的雜湊當 id，不是隨機產生。** 這代表同一份文件重建 study map 之後，沒有變動過的題目會保留原本的打勾狀態，只有真正新增或刪除的題目才會變動——不會因為重建一次整份清單就被打回原形。
+
+**架構上沿用既有慣例，沒有另外發明機制。** 兩個功能都落在 `AnchoraStore` 既有的 per-document JSON 檔案裡（跟已經在用的 `maps` 欄位並列），複習佇列額外提供一個跨文件掃描的入口；`AnchoraPaneModel`/`AnchoraPaneView` 從三個分頁擴成四個，新分頁的接法完全比照 `Inbox` 當初的樣板。Recall／Quiz 批改完成時要不要送進複習佇列，用的是跟 `aiPendingMapKind` 一樣的「請求開始前設一個 pending 屬性、建立 turn 時消耗掉」的手法，而不是幫每一個呼叫點的長參數列多加一個參數。
+
+**過程中因為橋接命名的不確定性，把所有新增的 Swift API 都寫了明確的 `@objc(...)` selector。** 從既有程式碼裡（`saveMap(response:...)` 橋接成 `saveMapWithResponse:...`）能歸納出 Swift 對 Objective-C 選擇器有一套「幫第一個具名參數插入 With」的規則，但介系詞或 `id` 這種縮寫開頭的參數會不會照這規則走、大小寫怎麼處理，光看兩個例子沒辦法完全確定。與其賭規則，索性把新加的每一個會被 `.m` 呼叫到的方法都明確寫出選擇器名稱，這是這個檔案裡原本就存在的做法（`AnchoraPrompts` 裡幾個方法也是這樣處理的），這次只是把它套用得更徹底。
+
+44 個新檢查（375 → 419）：自我測驗一節用固定標題而非位置找到、大小寫不影響比對、找不到時回傳 `NSNotFound` 而不是誤判成別的段落、逐條題目正確拆分、沒有清單標記的純文字段落退回成單一項目、勾選狀態依文字雜湊在重建後存活、新題目預設未勾選、被刪掉的題目也從清單裡消失；複習項目剛建立時「還沒到期」（Recall/Quiz 本身已經在 transcript 裡給過一次回饋，佇列的用途是晚點再看，不是立刻又看一次）、答對推進排程且不會超出五階讀出陣列外、答錯重置、佇列橫跨多份文件且各自保留自己的 `documentPath`、依到期時間由舊到新排序；以及 `AnchoraMapModel` 這一側：換一張 map 會清掉舊的自我測驗狀態直到 store 重新回答、`NSNotFound` 不會被誤存成真正的索引、勾選會同時反映在本地狀態與往外回報給 store 的呼叫上。
+
+**過程中做了一次真實的回歸測試。** 因為這次大幅改動 `SKRightSideViewController.m`（新增第四個 property、新的 pending 屬性、`buildAIInterface` 的接線），光靠建置成功不足以確信側欄真的能正常初始化，所以另外開了一份雙頁測試 PDF、實際啟動 app、用 AppleScript 新增一個標註、確認 `modified` 正確翻轉、且過程中 app 全程存活——`buildAIInterface` 是在 `viewDidLoad` 裡跑的，這代表新的四分頁側欄接線在文件開啟的當下就真的執行過一次，而不只是編譯器沒有報錯。
+
+**還沒驗到的地方，說清楚：** 兩個功能的觸發點都是真正的 AI 回覆（Recall/Quiz 批改完成、Study map 建好），這裡沒有 API 額度能跑一次真實網路請求，所以「佇列會不會在一次真的 Recall/Quiz 之後正確跳出項目」與「自我測驗清單能不能正確解析真實模型輸出的固定標題」都只驗證到手寫樣本這一層，沒有驗證到真實 API 回應這一層。
+
+版本 `1.9.0 (23)`；測試 419 個檢查。
+
+---
+
 ## 目前可用功能
 
 ### PDF 與筆記
@@ -881,7 +909,9 @@ codesign --verify --deep --strict：PASSED
 - OCR 區域與圖片區域輸入。
 - `Study`／`Scientific` 閱讀 profile。快捷列各三顆：Study 是 Explain／Recall／Quiz，Scientific 是 Methods／Figure／Evidence；其餘動作（Study map、Translate、Clinical、Question、Hypothesis）在 ••• 裡。
 - 當頁回饋：`Recall` 對照你憑記憶寫下的一句話，`Quiz` 出 2–3 題並在你作答後逐題批改。
-- 側欄主體可切換 `Chat`／`Map`／`Inbox` 三面，各自使用整個高度。
+- 側欄主體可切換 `Chat`／`Map`／`Inbox`／`Review` 四面，各自使用整個高度。
+- `Review` 是跨文件的複習佇列：Recall／Quiz 批改完成自動收錄，`Knew it`／`Still shaky` 推進或重置排程（1／3／7／14／30 天）。
+- Study map 的自我測驗一節可逐條打勾，勾選狀態依題目文字保存，重建 map 不會清空既有進度。
 - 輸入框 Return 送出、Shift-Return 換行，並隨內容長高（約六行後改為捲動）。
 - CONTEXT 為一行狀態；抽取出來的文字可點開 popover 檢查全文。
 - 空白啟動（或 Dock 點擊而沒有視窗）時自動叫出開檔面板，不再是一片空白。
@@ -951,8 +981,8 @@ codesign --verify --deep --strict --verbose=2 Distribution/PDFBuddy.app
 ## 發行位置
 
 - Release app：`Distribution/Anchora.app`
-- Release 附件：`Distribution/Anchora-1.8.2-macos-arm64.zip`（8.8 MB，SHA-256 `c978ea7c…`）
-- 版本：`1.8.2 (22)`
+- Release 附件：`Distribution/Anchora-1.9.0-macos-arm64.zip`（8.9 MB，SHA-256 `848dbe05…`）
+- 版本：`1.9.0 (23)`
 - 最低系統：macOS 14.0
 - 大小：約 17 MB
 - Bundle ID：`com.kris.anchora`

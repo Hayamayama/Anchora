@@ -80,6 +80,100 @@ public final class AnchoraSavedMap: NSObject, Codable {
     }
 }
 
+/// One line of a study map's self-test section, made checkable.
+///
+/// The `id` is derived from the question's own text rather than assigned at
+/// random, so rebuilding the map -- which re-parses the same response, or a
+/// revised one -- reuses the same id for any question whose wording did not
+/// change.  That is what lets a checkmark survive a rebuild instead of being
+/// silently reset to unchecked every time.
+@objc(AnchoraChecklistItem)
+public final class AnchoraChecklistItem: NSObject, Codable, Identifiable {
+
+    @objc public let id: String
+    @objc public let text: String
+    @objc public let isDone: Bool
+
+    init(id: String, text: String, isDone: Bool = false) {
+        self.id = id
+        self.text = text
+        self.isDone = isDone
+        super.init()
+    }
+
+    func byMarking(done: Bool) -> AnchoraChecklistItem {
+        AnchoraChecklistItem(id: id, text: text, isDone: done)
+    }
+
+    static func id(forText text: String) -> String {
+        AnchoraStore.documentKey(forPath: text)
+    }
+}
+
+/// Something Recall or Quiz corrected, waiting to be looked at again.
+///
+/// The whole point of Recall and Quiz is that reading a page leaves no trace
+/// of whether it was understood.  Marking one of them is itself the missing
+/// trace -- but it was being thrown away the moment the transcript scrolled
+/// past it.  This is that trace, kept, with a date to come back to it.
+@objc(AnchoraReviewItem)
+public final class AnchoraReviewItem: NSObject, Codable, Identifiable {
+
+    @objc public let id: String
+    /// Which document and page this came from -- denormalised onto the item
+    /// itself, rather than left implicit in which file it is stored under, so
+    /// a queue drawn from every document at once can still say where each
+    /// item came from and jump back to it.
+    @objc public let documentPath: String
+    @objc public let sourceTitle: String
+    @objc public let sourcePage: Int
+    /// What produced this: "Recall check" or "Quiz", with the page.  Shown as
+    /// the item's label.
+    @objc public let prompt: String
+    /// The full corrected or graded answer, exactly as it was shown in the
+    /// transcript.  Reviewing an item later is reading this again -- there is
+    /// nothing to regenerate and nothing extracted from it.
+    @objc public let correction: String
+    @objc public let createdAt: Date
+    @objc public let dueAt: Date
+    /// Index into `AnchoraStore.reviewIntervalDays`.  Advances one step when
+    /// the reader says they knew it; resets to the start when they say they
+    /// did not.
+    @objc public let stage: Int
+
+    init(id: String = UUID().uuidString,
+         documentPath: String,
+         sourceTitle: String,
+         sourcePage: Int,
+         prompt: String,
+         correction: String,
+         createdAt: Date = Date(),
+         dueAt: Date,
+         stage: Int = 0) {
+        self.id = id
+        self.documentPath = documentPath
+        self.sourceTitle = sourceTitle
+        self.sourcePage = sourcePage
+        self.prompt = prompt
+        self.correction = correction
+        self.createdAt = createdAt
+        self.dueAt = dueAt
+        self.stage = stage
+        super.init()
+    }
+
+    func byAdvancing(stage: Int, dueAt: Date) -> AnchoraReviewItem {
+        AnchoraReviewItem(id: id, documentPath: documentPath, sourceTitle: sourceTitle, sourcePage: sourcePage,
+                          prompt: prompt, correction: correction, createdAt: createdAt, dueAt: dueAt, stage: stage)
+    }
+
+    /// "p. 14 · Respiratory physiology", matching how a captured thought's
+    /// source reads elsewhere.
+    public var sourceDescription: String {
+        sourceTitle.isEmpty ? "p. \(sourcePage)" : "p. \(sourcePage) · \(sourceTitle)"
+    }
+}
+
 private struct InboxFile: Codable {
     var version: Int = 1
     var notes: [AnchoraNote] = []
@@ -91,6 +185,8 @@ private struct DocumentFile: Codable {
     var title: String
     /// Keyed by map kind's raw value, as a string because JSON object keys are.
     var maps: [String: AnchoraSavedMap] = [:]
+    var selfTestItems: [AnchoraChecklistItem] = []
+    var reviewItems: [AnchoraReviewItem] = []
     /// Security-scoped bookmark, so a moved file can be re-matched later
     /// without asking the reader to rebuild anything.
     var bookmark: Data?
@@ -231,16 +327,9 @@ public final class AnchoraStore: NSObject {
 
     @objc public func saveMap(response: String, kindRawValue: Int, documentPath: String, title: String) {
         guard response.isEmpty == false, documentPath.isEmpty == false else { return }
-        let url = documentURL(forPath: documentPath)
-        var file = read(DocumentFile.self, at: url) ?? DocumentFile(path: documentPath, title: title)
-        file.path = documentPath
-        file.title = title
-        if file.bookmark == nil {
-            file.bookmark = try? URL(fileURLWithPath: documentPath)
-                .bookmarkData(options: .suitableForBookmarkFile, includingResourceValuesForKeys: nil, relativeTo: nil)
-        }
+        var file = documentFile(forPath: documentPath, title: title)
         file.maps[String(kindRawValue)] = AnchoraSavedMap(response: response, kindRawValue: kindRawValue)
-        write(file, to: url)
+        write(file, to: documentURL(forPath: documentPath))
     }
 
     /// The most recently built map for this document, whichever kind it was.
@@ -260,5 +349,124 @@ public final class AnchoraStore: NSObject {
     @objc public func deleteMaps(documentPath: String) {
         guard documentPath.isEmpty == false else { return }
         try? FileManager.default.removeItem(at: documentURL(forPath: documentPath))
+    }
+
+    /// Loads a document's file, creating one if none exists yet, and setting
+    /// its path/title/bookmark the same way every write path needs to.
+    private func documentFile(forPath path: String, title: String) -> DocumentFile {
+        var file = read(DocumentFile.self, at: documentURL(forPath: path)) ?? DocumentFile(path: path, title: title)
+        file.path = path
+        if title.isEmpty == false { file.title = title }
+        if file.bookmark == nil {
+            file.bookmark = try? URL(fileURLWithPath: path)
+                .bookmarkData(options: .suitableForBookmarkFile, includingResourceValuesForKeys: nil, relativeTo: nil)
+        }
+        return file
+    }
+
+    // MARK: - Self-test checklist
+
+    /// Replaces a document's self-test checklist with a freshly parsed one,
+    /// keeping the completion state of any question whose text is unchanged.
+    /// A rebuilt study map's self-test section looks, on the wire, like a
+    /// brand new list every time; matching by the question's own content
+    /// rather than its position is what lets a checkmark survive that.
+    @objc(setSelfTestQuestions:documentPath:title:)
+    public func setSelfTestQuestions(_ texts: [String], documentPath: String, title: String) {
+        guard documentPath.isEmpty == false, texts.isEmpty == false else { return }
+        var file = documentFile(forPath: documentPath, title: title)
+        let doneByID = Dictionary(uniqueKeysWithValues: file.selfTestItems.map { ($0.id, $0.isDone) })
+        file.selfTestItems = texts.map { text in
+            let id = AnchoraChecklistItem.id(forText: text)
+            return AnchoraChecklistItem(id: id, text: text, isDone: doneByID[id] ?? false)
+        }
+        write(file, to: documentURL(forPath: documentPath))
+    }
+
+    @objc(selfTestQuestionsWithDocumentPath:)
+    public func selfTestQuestions(documentPath: String) -> [AnchoraChecklistItem] {
+        guard documentPath.isEmpty == false else { return [] }
+        return read(DocumentFile.self, at: documentURL(forPath: documentPath))?.selfTestItems ?? []
+    }
+
+    @objc(setSelfTestItemWithID:done:documentPath:)
+    public func setSelfTestItem(id: String, done: Bool, documentPath: String) {
+        guard documentPath.isEmpty == false else { return }
+        let url = documentURL(forPath: documentPath)
+        var file = read(DocumentFile.self, at: url) ?? DocumentFile(path: documentPath, title: "")
+        guard let index = file.selfTestItems.firstIndex(where: { $0.id == id }) else { return }
+        file.selfTestItems[index] = file.selfTestItems[index].byMarking(done: done)
+        write(file, to: url)
+    }
+
+    // MARK: - Review queue
+
+    /// The schedule a review item advances through: a day, then three, then a
+    /// week, then two weeks, then a month.  Fixed and simple on purpose --
+    /// this is not spaced repetition tuned per item, it is "come back to this
+    /// again soon, then less often once it stops being wrong."
+    @objc public static let reviewIntervalDays: [Int] = [1, 3, 7, 14, 30]
+
+    private static func dueDate(forStage stage: Int) -> Date {
+        let days = reviewIntervalDays[min(max(stage, 0), reviewIntervalDays.count - 1)]
+        return Calendar.current.date(byAdding: .day, value: days, to: Date()) ?? Date()
+    }
+
+    /// Enqueues a Recall or Quiz correction for later review.  Every
+    /// completed correction is queued, not only the ones with something
+    /// wrong in them -- telling those apart would mean parsing the model's
+    /// own prose, and a review of something already understood costs nothing
+    /// but a moment, while missing a real correction costs the whole point of
+    /// this feature.
+    @discardableResult
+    @objc(addReviewItemWithPrompt:correction:documentPath:title:sourcePage:)
+    public func addReviewItem(prompt: String, correction: String, documentPath: String,
+                              title: String, sourcePage: Int) -> AnchoraReviewItem? {
+        guard correction.isEmpty == false, documentPath.isEmpty == false else { return nil }
+        let item = AnchoraReviewItem(documentPath: documentPath, sourceTitle: title, sourcePage: sourcePage,
+                                     prompt: prompt, correction: correction, dueAt: AnchoraStore.dueDate(forStage: 0))
+        var file = documentFile(forPath: documentPath, title: title)
+        file.reviewItems.append(item)
+        write(file, to: documentURL(forPath: documentPath))
+        return item
+    }
+
+    /// Every review item across every document, for a queue that does not
+    /// require reopening each PDF to see what is waiting in it.
+    @objc(allReviewItems)
+    public func allReviewItems() -> [AnchoraReviewItem] {
+        guard let urls = try? FileManager.default.contentsOfDirectory(at: documentsDirectory(),
+                                                                       includingPropertiesForKeys: nil)
+        else { return [] }
+        return urls.compactMap { read(DocumentFile.self, at: $0) }.flatMap(\.reviewItems)
+    }
+
+    /// Items due now or earlier, oldest due date first -- the one that has
+    /// been waiting longest is the one to look at first.
+    @objc public func dueReviewItems(asOf date: Date = Date()) -> [AnchoraReviewItem] {
+        allReviewItems().filter { $0.dueAt <= date }.sorted { $0.dueAt < $1.dueAt }
+    }
+
+    /// "Knew it" advances the schedule; "still shaky" resets it to the start.
+    /// Items live nested inside their document's own file, so advancing one
+    /// means finding that file again by the path recorded on the item.
+    @objc(advanceReviewItemWithID:documentPath:gotIt:)
+    public func advanceReviewItem(id: String, documentPath: String, gotIt: Bool) {
+        guard documentPath.isEmpty == false else { return }
+        let url = documentURL(forPath: documentPath)
+        var file = read(DocumentFile.self, at: url) ?? DocumentFile(path: documentPath, title: "")
+        guard let index = file.reviewItems.firstIndex(where: { $0.id == id }) else { return }
+        let nextStage = gotIt ? min(file.reviewItems[index].stage + 1, AnchoraStore.reviewIntervalDays.count - 1) : 0
+        file.reviewItems[index] = file.reviewItems[index].byAdvancing(stage: nextStage, dueAt: AnchoraStore.dueDate(forStage: nextStage))
+        write(file, to: url)
+    }
+
+    @objc(deleteReviewItemWithID:documentPath:)
+    public func deleteReviewItem(id: String, documentPath: String) {
+        guard documentPath.isEmpty == false else { return }
+        let url = documentURL(forPath: documentPath)
+        var file = read(DocumentFile.self, at: url) ?? DocumentFile(path: documentPath, title: "")
+        file.reviewItems.removeAll { $0.id == id }
+        write(file, to: url)
     }
 }

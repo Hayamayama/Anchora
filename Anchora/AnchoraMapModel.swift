@@ -50,17 +50,37 @@ public final class AnchoraMapModel: NSObject, ObservableObject {
     public var rendersMarkdown: Bool { kind == .study }
     @Published public var selectedIndex: Int = 0
 
+    /// Which section, if any, is the study map's self-test -- set alongside
+    /// `present`, and rendered as a checklist instead of prose.
+    @Published public private(set) var selfTestSectionIndex: Int?
+    @Published public private(set) var selfTestItems: [AnchoraChecklistItem] = []
+
     /// Jump to a cited page.
     @objc public var onOpenPage: ((Int) -> Void)?
     /// Locate and select a Source quote on its cited page.
     @objc public var onOpenQuote: ((String, Int) -> Void)?
     /// Zero-based page index -> the label the reader sees in the PDF.
     @objc public var pageLabelProvider: ((Int) -> String)?
+    /// A checklist item was checked or unchecked; the id and its new state.
+    @objc public var onToggleSelfTestItem: ((String, Bool) -> Void)?
 
     @objc public var isEmpty: Bool { sections.isEmpty }
 
     public var selectedSection: AnchoraMapSection? {
         sections.indices.contains(selectedIndex) ? sections[selectedIndex] : nil
+    }
+
+    public var isSelfTestSelected: Bool {
+        selfTestSectionIndex != nil && selectedIndex == selfTestSectionIndex
+    }
+
+    /// "Self-test questions (3/7)" once there is progress worth showing;
+    /// otherwise just the section's own title, which is exactly what every
+    /// other entry in the picker already shows.
+    public func pickerTitle(for section: AnchoraMapSection, at index: Int) -> String {
+        guard index == selfTestSectionIndex, selfTestItems.isEmpty == false else { return section.title }
+        let done = selfTestItems.filter(\.isDone).count
+        return "\(section.title) (\(done)/\(selfTestItems.count))"
     }
 
     // MARK: - Mutation
@@ -70,12 +90,34 @@ public final class AnchoraMapModel: NSObject, ObservableObject {
         self.sections = sections
         self.kind = kind
         selectedIndex = 0
+        selfTestSectionIndex = nil
+        selfTestItems = []
+    }
+
+    /// Called once, right after `present`, with whatever the store already
+    /// knows about this document's checklist.  Kept separate from `present`
+    /// itself so the model does not have to reach into the store on its own;
+    /// the AppKit host already owns that round trip for saving the map too.
+    @objc(setSelfTestItems:sectionIndex:)
+    public func setSelfTestItems(_ items: [AnchoraChecklistItem], sectionIndex: Int) {
+        guard sectionIndex != NSNotFound else { return }
+        selfTestSectionIndex = sectionIndex
+        selfTestItems = items
+    }
+
+    public func toggleSelfTestItem(_ item: AnchoraChecklistItem) {
+        guard let index = selfTestItems.firstIndex(where: { $0.id == item.id }) else { return }
+        let done = item.isDone == false
+        selfTestItems[index] = item.byMarking(done: done)
+        onToggleSelfTestItem?(item.id, done)
     }
 
     @objc public func clear() {
         sections = []
         kind = .none
         selectedIndex = 0
+        selfTestSectionIndex = nil
+        selfTestItems = []
     }
 
     // MARK: - Page labels

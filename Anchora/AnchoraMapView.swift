@@ -48,7 +48,7 @@ struct AnchoraMapView: View {
         Picker("", selection: Binding(get: { model.selectedIndex },
                                       set: { model.selectedIndex = $0 })) {
             ForEach(Array(model.sections.enumerated()), id: \.offset) { index, section in
-                Text(section.title).tag(index)
+                Text(model.pickerTitle(for: section, at: index)).tag(index)
             }
         }
         .labelsHidden()
@@ -80,7 +80,9 @@ struct AnchoraMapView: View {
     private var detail: some View {
         ScrollView(.vertical) {
             Group {
-                if let section = model.selectedSection {
+                if model.isSelfTestSelected {
+                    selfTestChecklist
+                } else if let section = model.selectedSection {
                     if model.rendersMarkdown {
                         AnchoraMarkdownText(markdown: section.text, bodySize: 12.5)
                     } else {
@@ -96,5 +98,32 @@ struct AnchoraMapView: View {
         // A section is read inside the card; its length must never influence
         // the sidebar's own layout.
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    /// Questions to answer from memory, each its own checkbox rather than one
+    /// block of prose to mark done all at once -- the point is to notice
+    /// which ones you actually cannot answer, not that you looked at the list.
+    private var selfTestChecklist: some View {
+        VStack(alignment: .leading, spacing: 7.0) {
+            ForEach(model.selfTestItems) { item in
+                Button {
+                    model.toggleSelfTestItem(item)
+                } label: {
+                    HStack(alignment: .top, spacing: 7.0) {
+                        Image(systemName: item.isDone ? "checkmark.square.fill" : "square")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(item.isDone ? Color.accentColor : Color.secondary)
+                        Text(item.text)
+                            .font(.system(size: 12.5))
+                            .strikethrough(item.isDone)
+                            .foregroundStyle(item.isDone ? .secondary : .primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .textSelection(.enabled)
     }
 }

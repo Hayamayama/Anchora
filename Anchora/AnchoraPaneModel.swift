@@ -19,6 +19,7 @@ import Combine
     case chat = 0
     case map = 1
     case inbox = 2
+    case review = 3
 }
 
 @objc(AnchoraPaneModel)
@@ -33,6 +34,7 @@ public final class AnchoraPaneModel: NSObject, ObservableObject {
     @objc public func showChat() { show(.chat) }
     @objc public func showMap() { show(.map) }
     @objc public func showInbox() { show(.inbox) }
+    @objc public func showReview() { show(.review) }
 
     @objc public var isShowingInbox: Bool { tab == .inbox }
 

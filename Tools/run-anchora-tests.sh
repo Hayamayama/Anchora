@@ -9,6 +9,7 @@ swiftc -O -parse-as-library \
     "$root/Anchora/AnchoraMapSection.swift" \
     "$root/Anchora/AnchoraPaperMap.swift" \
     "$root/Anchora/AnchoraStudyMap.swift" \
+    "$root/Anchora/AnchoraMapModel.swift" \
     "$root/Anchora/AnchoraMarkdown.swift" \
     "$root/Anchora/AnchoraTextQuality.swift" \
     "$root/Anchora/AnchoraTurn.swift" \

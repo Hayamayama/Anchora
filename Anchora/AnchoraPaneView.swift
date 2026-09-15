@@ -16,6 +16,7 @@ struct AnchoraPaneView: View {
     @ObservedObject var chat: AnchoraChatModel
     @ObservedObject var map: AnchoraMapModel
     @ObservedObject var inbox: AnchoraInboxModel
+    @ObservedObject var review: AnchoraReviewModel
     var pageLabels: [String]
 
     /// The strip's height, which the host adds to whatever it gives the body.
@@ -46,6 +47,8 @@ struct AnchoraPaneView: View {
             drawer { AnchoraMapView(model: map, pageLabels: pageLabels) }
         case .inbox:
             drawer { AnchoraInboxView(model: inbox) }
+        case .review:
+            drawer { AnchoraReviewView(model: review) }
         }
     }
 
@@ -69,6 +72,8 @@ struct AnchoraPaneView: View {
                 .disabled(map.isEmpty)
             tabButton(.inbox, title: "Inbox", badge: inbox.openCount,
                       help: "Thoughts to deal with later. ⌘⇧J captures one from anywhere in Anchora")
+            tabButton(.review, title: "Review", badge: review.dueCount,
+                      help: "What Recall and Quiz corrected, due for another look")
             Spacer(minLength: 0.0)
         }
         .frame(height: Self.stripHeight)

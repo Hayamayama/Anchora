@@ -216,6 +216,8 @@
 		AC00000000000000000000CB /* AnchoraPaperMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000067 /* AnchoraPaperMap.swift */; };
 		AC00000000000000000000CC /* AnchoraResponsesClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000068 /* AnchoraResponsesClient.swift */; };
 		AC0000000000000000000640 /* AnchoraStudyMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC00000000000000000005DC /* AnchoraStudyMap.swift */; };
+		AC0000000000000000000650 /* AnchoraReviewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC000000000000000000064F /* AnchoraReviewModel.swift */; };
+		AC0000000000000000000652 /* AnchoraReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000651 /* AnchoraReviewView.swift */; };
 		AC000000000000000000064E /* AnchoraAskField.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC000000000000000000064D /* AnchoraAskField.swift */; };
 		AC0000000000000000000642 /* AnchoraStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000641 /* AnchoraStore.swift */; };
 		AC0000000000000000000644 /* AnchoraInboxModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000643 /* AnchoraInboxModel.swift */; };
@@ -1129,6 +1131,8 @@
 		AC0000000000000000000067 /* AnchoraPaperMap.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraPaperMap.swift; sourceTree = "<group>"; };
 		AC0000000000000000000068 /* AnchoraResponsesClient.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraResponsesClient.swift; sourceTree = "<group>"; };
 		AC00000000000000000005DC /* AnchoraStudyMap.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraStudyMap.swift; sourceTree = "<group>"; };
+		AC000000000000000000064F /* AnchoraReviewModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraReviewModel.swift; sourceTree = "<group>"; };
+		AC0000000000000000000651 /* AnchoraReviewView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraReviewView.swift; sourceTree = "<group>"; };
 		AC000000000000000000064D /* AnchoraAskField.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraAskField.swift; sourceTree = "<group>"; };
 		AC0000000000000000000641 /* AnchoraStore.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraStore.swift; sourceTree = "<group>"; };
 		AC0000000000000000000643 /* AnchoraInboxModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AnchoraInboxModel.swift; sourceTree = "<group>"; };
@@ -1554,6 +1558,8 @@
 				AC0000000000000000000067 /* AnchoraPaperMap.swift */,
 				AC0000000000000000000068 /* AnchoraResponsesClient.swift */,
 				AC00000000000000000005DC /* AnchoraStudyMap.swift */,
+				AC000000000000000000064F /* AnchoraReviewModel.swift */,
+				AC0000000000000000000651 /* AnchoraReviewView.swift */,
 				AC000000000000000000064D /* AnchoraAskField.swift */,
 				AC0000000000000000000641 /* AnchoraStore.swift */,
 				AC0000000000000000000643 /* AnchoraInboxModel.swift */,
@@ -3058,6 +3064,8 @@
 				AC00000000000000000000CB /* AnchoraPaperMap.swift in Sources */,
 				AC00000000000000000000CC /* AnchoraResponsesClient.swift in Sources */,
 				AC0000000000000000000640 /* AnchoraStudyMap.swift in Sources */,
+				AC0000000000000000000650 /* AnchoraReviewModel.swift in Sources */,
+				AC0000000000000000000652 /* AnchoraReviewView.swift in Sources */,
 				AC000000000000000000064E /* AnchoraAskField.swift in Sources */,
 				AC0000000000000000000642 /* AnchoraStore.swift in Sources */,
 				AC0000000000000000000644 /* AnchoraInboxModel.swift in Sources */,
@@ -3909,7 +3917,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = CE17EE460E24ED7C00DE06EA /* Skim-App.xcconfig */;
 			buildSettings = {
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 23;
 			};
 			name = Debug;
 		};
@@ -3917,7 +3925,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = CE17EE460E24ED7C00DE06EA /* Skim-App.xcconfig */;
 			buildSettings = {
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 23;
 			};
 			name = Release;
 		};

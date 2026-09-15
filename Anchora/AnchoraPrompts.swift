@@ -483,8 +483,9 @@ public final class AnchoraPrompts: NSObject {
         deliberately send the reader out of order.
 
         Finish with two more H2 sections: one giving the shortest useful path for a reader who is short of time, naming the \
-        pages to read; and one listing questions the reader should be able to answer from memory afterwards, as a \
-        self-test.
+        pages to read; and one headed exactly "## \(AnchoraStudyMap.selfTestHeading)", in this exact English spelling even \
+        if the response language is Chinese, listing as a numbered list the questions the reader should be able to answer \
+        from memory afterwards.
 
         Cite pages for everything you say the document covers, and say it is not covered rather than inventing material.
         """

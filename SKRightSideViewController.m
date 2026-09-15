@@ -46,6 +46,7 @@
 #import "SKNoteOutlineView.h"
 #import "SKTableView.h"
 #import "NSColor_SKExtensions.h"
+#import "NSError_SKExtensions.h"
 #import <SkimNotes/SkimNotes.h>
 #import "PDFAnnotation_SKExtensions.h"
 #import "SKSnapshotWindowController.h"
@@ -77,8 +78,10 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
 @property (nonatomic, nullable, strong) AnchoraChatModel *aiChatModel;
 @property (nonatomic, nullable, strong) AnchoraMapModel *aiMapModel;
 @property (nonatomic, nullable, strong) AnchoraInboxModel *aiInboxModel;
-// Which of the sidebar's three faces is showing.  The transcript, the map and
-// the inbox take turns in one area rather than competing for it.
+@property (nonatomic, nullable, strong) AnchoraReviewModel *aiReviewModel;
+// Which of the sidebar's four faces is showing.  The transcript, the map, the
+// inbox and the review queue take turns in one area rather than competing
+// for it.
 @property (nonatomic, nullable, strong) AnchoraPaneModel *aiPaneModel;
 @property (nonatomic, nullable, strong) NSView *aiPaneView;
 // The reader's live selection, and the snapshot the in-flight answer was
@@ -102,6 +105,10 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
 // and the marking has to see the page the questions came from.
 @property (nonatomic) BOOL aiQuizPending;
 @property (nonatomic, nullable, strong) PDFPage *aiQuizPage;
+// Set just before a Recall or Quiz-grading request starts, to the label its
+// correction should carry into the review queue; consumed as its turn is
+// built, the same way aiPendingMapKind is.  Nil for every ordinary question.
+@property (nonatomic, nullable, copy) NSString *aiPendingReviewLabel;
 @end
 
 @implementation SKRightSideViewController
@@ -133,6 +140,43 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
         [[mainController pdfView] goToPage:page];
     else
         NSBeep();
+}
+
+/// A review item may belong to a document other than the one on screen --
+/// the queue is drawn from every document that has anything in it.  Jump
+/// directly if it is this one; otherwise open the other file and jump once
+/// its window exists.
+- (void)openReviewItem:(AnchoraReviewItem *)item {
+    NSString *path = [item documentPath];
+    NSInteger pageNumber = [item sourcePage];
+    if ([path length] == 0) {
+        NSBeep();
+        return;
+    }
+    if ([path isEqualToString:[self currentDocumentPath]]) {
+        [self goToPDFPageAtIndex:pageNumber - 1];
+        return;
+    }
+    NSURL *url = [NSURL fileURLWithPath:path];
+    [[NSDocumentController sharedDocumentController] openDocumentWithContentsOfURL:url
+                                                                            display:YES
+                                                                  completionHandler:^(NSDocument *document, BOOL alreadyOpen, NSError *error) {
+        SKMainWindowController *windowController = nil;
+        for (NSWindowController *candidate in [document windowControllers]) {
+            if ([candidate isKindOfClass:[SKMainWindowController class]]) {
+                windowController = (SKMainWindowController *)candidate;
+                break;
+            }
+        }
+        SKPDFView *pdfView = [windowController pdfView];
+        PDFDocument *pdfDocument = [pdfView document];
+        PDFPage *page = (pdfDocument && pageNumber >= 1 && pageNumber <= (NSInteger)[pdfDocument pageCount])
+            ? [pdfDocument pageAtIndex:(NSUInteger)(pageNumber - 1)] : nil;
+        if (page)
+            [pdfView goToPage:page];
+        else if (error && [error isUserCancelledError] == NO)
+            [NSApp presentError:error];
+    }];
 }
 
 - (void)selectPaperMapQuote:(NSString *)quote onPageAtIndex:(NSInteger)pageIndex {
@@ -240,10 +284,28 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
     if ([sections count] == 0)
         return;
     [self.aiMapModel present:sections kind:kind];
+    if (kind == AnchoraMapKindStudy)
+        [self loadSelfTestChecklistFromSections:sections];
     // A map the reader just asked for is what they want to look at.  One
     // restored on open is not: it waits behind its tab.
     if (select)
         [self.aiPaneModel showMap];
+}
+
+/// The study map's self-test section, if it has one, made checkable: parsed
+/// out of the section text and merged with whatever the store already knows
+/// about this document's progress on it.
+- (void)loadSelfTestChecklistFromSections:(NSArray<AnchoraMapSection *> *)sections {
+    NSInteger sectionIndex = [AnchoraStudyMap selfTestSectionIndexIn:sections];
+    if (sectionIndex == NSNotFound)
+        return;
+    NSString *path = [self currentDocumentPath];
+    NSArray<NSString *> *questions = [AnchoraStudyMap selfTestQuestionsFromSectionText:sections[sectionIndex].text];
+    if ([questions count] == 0 || [path length] == 0)
+        return;
+    [[AnchoraStore shared] setSelfTestQuestions:questions documentPath:path title:[self currentDocumentTitle]];
+    NSArray<AnchoraChecklistItem *> *items = [[AnchoraStore shared] selfTestQuestionsWithDocumentPath:path];
+    [self.aiMapModel setSelfTestItems:items sectionIndex:sectionIndex];
 }
 
 - (void)appendChatMessageFrom:(NSString *)sender text:(NSString *)text sourcePageIndexes:(NSArray<NSNumber *> *)sourcePageIndexes {
@@ -383,11 +445,13 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
     AnchoraMapModel *mapModel = [[AnchoraMapModel alloc] init];
     AnchoraChatModel *chatModel = [[AnchoraChatModel alloc] init];
     AnchoraInboxModel *inboxModel = [[AnchoraInboxModel alloc] init];
+    AnchoraReviewModel *reviewModel = [[AnchoraReviewModel alloc] init];
     AnchoraPaneModel *paneModel = [[AnchoraPaneModel alloc] init];
     NSView *paneView = [AnchoraHosting paneViewWithPane:paneModel
                                                    chat:chatModel
                                                     map:mapModel
                                                   inbox:inboxModel
+                                                 review:reviewModel
                                              pageLabels:[self pdfPageLabels]];
     [rootView addSubview:paneView];
 
@@ -422,6 +486,7 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
     self.aiPaneModel = paneModel;
     self.aiPaneView = paneView;
     self.aiInboxModel = inboxModel;
+    self.aiReviewModel = reviewModel;
     self.aiHeaderModel = headerModel;
     self.aiHeaderView = header;
     self.aiChatModel = chatModel;
@@ -449,6 +514,14 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
     [mapModel setPageLabelProvider:^NSString *(NSInteger pageIndex) {
         NSArray<NSString *> *labels = [weakSelf pdfPageLabels];
         return (pageIndex >= 0 && (NSUInteger)pageIndex < [labels count]) ? [labels objectAtIndex:(NSUInteger)pageIndex] : @"";
+    }];
+    [mapModel setOnToggleSelfTestItem:^(NSString *itemID, BOOL done) {
+        NSString *path = [weakSelf currentDocumentPath];
+        if ([path length])
+            [[AnchoraStore shared] setSelfTestItemWithID:itemID done:done documentPath:path];
+    }];
+    [reviewModel setOnOpenItem:^(AnchoraReviewItem *item) {
+        [weakSelf openReviewItem:item];
     }];
     // A note records where the reader was, and is asked for it only as the
     // note is written -- nothing has to keep pace with scrolling.
@@ -672,6 +745,7 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
         // model's memory of its own questions.
         PDFPage *page = self.aiQuizPage ?: [[mainController pdfView] currentPage];
         [self setQuizPending:NO page:nil];
+        self.aiPendingReviewLabel = [NSString stringWithFormat:@"Quiz — %@", [self requestSourceDescriptionForPageIndexes:@[@([page pageIndex])]]];
         [self analyzePage:page
                  question:[AnchoraPrompts quizGradingPromptWithAnswers:typed]
           displayQuestion:typed];
@@ -804,6 +878,7 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
         // The transcript keeps what the reader claimed with the correction
         // under it; that pairing is the feedback, so the display question is
         // the reader's own sentence rather than a label.
+        self.aiPendingReviewLabel = [NSString stringWithFormat:@"Recall check — %@", [self requestSourceDescriptionForPageIndexes:@[@([page pageIndex])]]];
         [self analyzePage:page
                  question:[AnchoraPrompts recallPromptWithSummary:summary]
           displayQuestion:summary];
@@ -1041,6 +1116,8 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
     // than inferred from the wording of the question.
     AnchoraMapKind mapKind = [fileDataURL length] > 0 ? self.aiPendingMapKind : AnchoraMapKindNone;
     self.aiPendingMapKind = AnchoraMapKindNone;
+    NSString *reviewLabel = self.aiPendingReviewLabel;
+    self.aiPendingReviewLabel = nil;
 
     AnchoraRequest *request = [[AnchoraRequest alloc] init];
     [request setModel:[self selectedAIModel]];
@@ -1071,6 +1148,7 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
                                            imageDataURL:imageDataURL
                                       sourcePageIndexes:sourcePageIndexes
                                                 mapKind:mapKind
+                                            reviewPrompt:reviewLabel
                                                  status:[AnchoraPrompts preparingStatusWithHasFile:[fileDataURL length] > 0 hasImage:[imageDataURL length] > 0]];
     [self recordAIConversationRole:@"user" text:conversationUserText];
     [self appendChatMessageFrom:@"You" text:displayQuestion];
@@ -1227,6 +1305,8 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
             [self saveMapFromTurn:turn];
             [self.aiChatModel removeStreamingMessage];
         }
+        if ([turn isReviewable])
+            [self addReviewItemFromTurn:turn];
         if ([webSources count]) {
             NSMutableArray<NSString *> *lines = [NSMutableArray arrayWithCapacity:[webSources count]];
             for (NSString *URLString in webSources)
@@ -1253,6 +1333,24 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
                                          title:[self currentDocumentTitle]];
 }
 
+/// Queues a finished Recall or Quiz correction for later review.  Every one
+/// is queued, not only the ones with something wrong in them -- telling those
+/// apart would mean parsing the model's own prose, and reviewing something
+/// already understood costs a moment, while missing a real correction costs
+/// the point of the feature.
+- (void)addReviewItemFromTurn:(AnchoraTurn *)turn {
+    NSString *path = [self currentDocumentPath];
+    if ([path length] == 0 || [[turn response] length] == 0)
+        return;
+    NSInteger sourcePage = [turn page] ? (NSInteger)[[turn page] pageIndex] + 1 : 0;
+    [[AnchoraStore shared] addReviewItemWithPrompt:[turn reviewPrompt]
+                                        correction:[turn response]
+                                      documentPath:path
+                                             title:[self currentDocumentTitle]
+                                        sourcePage:sourcePage];
+    [self.aiReviewModel reload];
+}
+
 - (void)resetAIConversationForNewDocument {
     [self.aiClient cancel];
     self.aiClient = nil;
@@ -1264,6 +1362,7 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
                                   chat:self.aiChatModel
                                    map:self.aiMapModel
                                  inbox:self.aiInboxModel
+                                review:self.aiReviewModel
                             pageLabels:[self pdfPageLabels]];
     self.aiConversation = [NSMutableArray array];
     self.aiTurn = nil;
@@ -1271,6 +1370,7 @@ static const NSUInteger SKAIMapMaximumOutputTokens = 16000;
     [self clearPaperMap];
     [self.aiChatModel clear];
     [self.aiInboxModel reload];
+    [self.aiReviewModel reload];
     [self claimQuickCaptureSource];
     [self restoreSavedMap];
     [self queueWelcomeMessage];

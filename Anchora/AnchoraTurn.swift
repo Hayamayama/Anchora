@@ -160,6 +160,11 @@ public final class AnchoraTurn: NSObject {
     /// it is far too long to read as a chat bubble.
     @objc public let mapKind: AnchoraMapKind
     @objc public var isMap: Bool { mapKind != .none }
+    /// Non-nil for a Recall or Quiz-grading turn: the label its correction
+    /// should carry into the review queue once it finishes.  Nil for every
+    /// ordinary question, which is never queued.
+    @objc public let reviewPrompt: String?
+    @objc public var isReviewable: Bool { reviewPrompt != nil }
 
     /// The current phase, shown in the streaming bubble until output arrives.
     @objc public var status: String?
@@ -179,6 +184,7 @@ public final class AnchoraTurn: NSObject {
                       imageDataURL: String?,
                       sourcePageIndexes: [NSNumber],
                       mapKind: AnchoraMapKind,
+                      reviewPrompt: String? = nil,
                       status: String?) {
         // A turn that was asked about a text selection is anchored to that
         // selection; one asked about a region or a whole page is anchored to
@@ -192,6 +198,7 @@ public final class AnchoraTurn: NSObject {
         self.imageDataURL = imageDataURL
         self.sourcePageIndexes = sourcePageIndexes
         self.mapKind = mapKind
+        self.reviewPrompt = reviewPrompt
         self.status = status
         super.init()
     }
