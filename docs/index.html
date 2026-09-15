@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anchora — a macOS reading companion built on Skim</title>
+<meta name="description" content="Read a PDF and ask AI about it in the same window. Recall and Quiz turn reading into a real feedback loop, Study map plans the whole document, and answers pin back into the PDF as editable notes.">
+<link rel="icon" href="favicon.png">
+<style>
+  :root {
+    --bg: #fbfaf7;
+    --bg-raised: #ffffff;
+    --text: #1c1a16;
+    --text-secondary: #5b564c;
+    --text-tertiary: #8a8577;
+    --border: #e6e1d6;
+    --accent: #b5651d;
+    --accent-strong: #8f4f16;
+    --accent-tint: #f3e6d6;
+    --code-bg: #f1ede3;
+    --warn-bg: #fdf3e3;
+    --warn-border: #ecd6a6;
+    --shadow: 0 1px 2px rgba(28, 26, 22, 0.06), 0 8px 24px rgba(28, 26, 22, 0.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16140f;
+      --bg-raised: #1e1c16;
+      --text: #f2efe8;
+      --text-secondary: #b8b2a3;
+      --text-tertiary: #837c6c;
+      --border: #322e24;
+      --accent: #e2a45e;
+      --accent-strong: #f0bc84;
+      --accent-tint: #3a2e1c;
+      --code-bg: #221f18;
+      --warn-bg: #2c2415;
+      --warn-border: #5a4726;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  main {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0 24px 96px;
+  }
+  a { color: var(--accent-strong); }
+
+  /* Hero */
+  .hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 72px 0 40px;
+  }
+  .hero img {
+    width: 108px;
+    height: 108px;
+    border-radius: 24px;
+    box-shadow: var(--shadow);
+    margin-bottom: 24px;
+  }
+  .hero h1 {
+    font-size: 40px;
+    letter-spacing: -0.02em;
+    margin: 0 0 12px;
+  }
+  .tagline {
+    font-size: 19px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    max-width: 560px;
+    margin: 0 0 32px;
+  }
+  .cta-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-bottom: 10px;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 22px;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 600;
+    text-decoration: none;
+    border: 1px solid transparent;
+    transition: transform 0.08s ease, opacity 0.15s ease;
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn-primary {
+    background: var(--accent);
+    color: #fff8f0;
+  }
+  .btn-primary:hover { opacity: 0.92; }
+  .btn-secondary {
+    background: var(--bg-raised);
+    color: var(--text);
+    border-color: var(--border);
+  }
+  .btn-secondary:hover { border-color: var(--text-tertiary); }
+  .release-meta {
+    font-size: 13px;
+    color: var(--text-tertiary);
+    min-height: 18px;
+  }
+  .release-meta a { color: inherit; text-decoration: underline; }
+
+  /* Sections */
+  section { margin: 64px 0; }
+  h2 {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin: 0 0 20px;
+  }
+  h3 { font-size: 17px; margin: 0 0 6px; }
+  p { margin: 0 0 14px; }
+  .lede {
+    font-size: 17px;
+    color: var(--text-secondary);
+  }
+
+  /* Feature grid */
+  .features {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 22px 28px;
+  }
+  @media (max-width: 620px) {
+    .features { grid-template-columns: 1fr; }
+  }
+  .feature h3 { display: flex; align-items: baseline; gap: 8px; }
+  .feature .tag {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: var(--accent-strong);
+    background: var(--accent-tint);
+    padding: 2px 7px;
+    border-radius: 5px;
+    white-space: nowrap;
+  }
+  .feature p {
+    color: var(--text-secondary);
+    font-size: 14.5px;
+    margin: 0;
+  }
+
+  /* Install */
+  .steps { display: flex; flex-direction: column; gap: 20px; }
+  .step {
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+  }
+  .step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--accent-tint);
+    color: var(--accent-strong);
+    font-size: 12px;
+    font-weight: 700;
+    margin-right: 8px;
+  }
+  pre {
+    background: var(--code-bg);
+    border-radius: 8px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.55;
+    margin: 10px 0 0;
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  :not(pre) > code {
+    background: var(--code-bg);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 0.9em;
+  }
+  .note {
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    font-size: 14px;
+    color: var(--text);
+  }
+  .note strong { display: block; margin-bottom: 4px; }
+
+  .req-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .req-list li {
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 13.5px;
+    color: var(--text-secondary);
+  }
+
+  footer {
+    border-top: 1px solid var(--border);
+    padding-top: 28px;
+    color: var(--text-tertiary);
+    font-size: 13.5px;
+    line-height: 1.7;
+  }
+  footer a { color: var(--text-secondary); }
+</style>
+</head>
+<body>
+<main>
+
+  <div class="hero">
+    <img src="icon.png" alt="Anchora app icon">
+    <h1>Anchora</h1>
+    <p class="tagline">A macOS reading companion built on Skim — ask AI about a PDF without leaving it, and get the feedback loop studying actually needs.</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="https://github.com/Hayamayama/Anchora/releases/latest">Download for Mac</a>
+      <a class="btn btn-secondary" href="https://github.com/Hayamayama/Anchora">View source on GitHub</a>
+    </div>
+    <div class="release-meta" id="release-meta"></div>
+  </div>
+
+  <section>
+    <h2>Why</h2>
+    <p class="lede">Reading a PDF and asking a question about it usually means two windows, or a chat tab open beside a reader you keep alt-tabbing back to. Anchora keeps them in one place, and treats reading as something that should produce a signal about whether it worked — not just a scrollbar that reached the bottom.</p>
+  </section>
+
+  <section>
+    <h2>What it does</h2>
+    <div class="features">
+
+      <div class="feature">
+        <h3>Ask AI about the page</h3>
+        <p>Select text, drag to OCR a region, or capture an image region — the AI panel answers with citations back to the page.</p>
+      </div>
+
+      <div class="feature">
+        <h3>Recall &amp; Quiz</h3>
+        <p>Write one sentence from memory and get told exactly what was right, wrong, and missed. Or get quizzed on the page you just read, then marked once you answer.</p>
+      </div>
+
+      <div class="feature">
+        <h3>Review queue</h3>
+        <p>Every Recall and Quiz correction comes back on a schedule — a day, then three, then a week — so what you got wrong doesn't just scroll away.</p>
+      </div>
+
+      <div class="feature">
+        <h3>Study map &amp; Paper map</h3>
+        <p>A plan for the whole document — what order, what to focus on, what to skip — with a self-test checklist at the end that remembers what you've checked off.</p>
+      </div>
+
+      <div class="feature">
+        <h3>Pin answers into the PDF</h3>
+        <p>Any answer becomes an editable, ordinary PDF note. Anchora writes standard annotations, so other PDF apps can read them too.</p>
+      </div>
+
+      <div class="feature">
+        <h3>Photos into the page</h3>
+        <p>Bring in a photo of a handout or whiteboard — from an iPhone, a file, paste, or drag-and-drop — as a movable, resizable note on the page.</p>
+      </div>
+
+      <div class="feature">
+        <h3>Thought inbox</h3>
+        <p><kbd>⌘⇧J</kbd> from anywhere in the app catches a stray thought in one line, without leaving the page you're reading.</p>
+      </div>
+
+      <div class="feature">
+        <h3>Two reading profiles</h3>
+        <p><strong>Study</strong> for lectures and textbooks; <strong>Scientific</strong> for papers, separating direct evidence from interpretation and what remains unproven.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Install</h2>
+
+    <ul class="req-list" style="margin-bottom: 24px;">
+      <li>macOS 14.0 or later</li>
+      <li>Apple Silicon (M-series)</li>
+      <li>Your own OpenAI API key</li>
+    </ul>
+
+    <div class="steps">
+      <div class="step">
+        <h3><span class="step-num">1</span>Download and open</h3>
+        <p>Get the latest build from the button above, unzip it, and drag <code>Anchora.app</code> to Applications.</p>
+      </div>
+
+      <div class="step">
+        <h3><span class="step-num">2</span>Get past the Gatekeeper warning</h3>
+        <p>Anchora isn't notarized by Apple yet, so the first time you open it, macOS refuses and calls it damaged or from an unidentified developer. That's expected for a small project without a paid Apple developer account behind every release — it doesn't mean anything is wrong with the file.</p>
+        <p>Open <strong>System Settings → Privacy &amp; Security</strong>, scroll down to the message about Anchora, click <strong>Open Anyway</strong>, and confirm. macOS only asks once per version.</p>
+        <p>If you're comfortable with Terminal, this does the same thing in one step:</p>
+        <pre><code>xattr -dr com.apple.quarantine /Applications/Anchora.app</code></pre>
+      </div>
+
+      <div class="step">
+        <h3><span class="step-num">3</span>Add your OpenAI API key</h3>
+        <p>Open a PDF, show the AI panel, click <strong>•••</strong> → <strong>Set OpenAI API Key…</strong>, and paste in a key from the <a href="https://platform.openai.com/api-keys">OpenAI Platform</a>. It's stored only in your Mac's Keychain — never in a PDF, never sent anywhere but OpenAI.</p>
+        <div class="note">
+          <strong>This uses your own API billing, separate from ChatGPT Plus.</strong>
+          A ChatGPT subscription does not cover this. Anchora calls the OpenAI API directly, and usage is billed to your OpenAI Platform account — typically small for normal use, but real, and yours to watch.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Anchora is a personal, modified build of <a href="https://skim-app.sourceforge.io/">Skim</a>, and keeps Skim's BSD 3-Clause license. See the <a href="https://github.com/Hayamayama/Anchora/blob/main/LICENSE">LICENSE</a> for the full text and credit to Michael O. McCracken and Skim's other contributors.</p>
+    <p>Anchora is not affiliated with OpenAI or Apple. <a href="https://github.com/Hayamayama/Anchora">Source, issues, and release history on GitHub</a>.</p>
+  </footer>
+
+</main>
+
+<script>
+  // Best-effort: shows the current version and size next to the download
+  // button. The button above already points at /releases/latest regardless,
+  // so this is purely informational and fails silently offline or if GitHub's
+  // API is rate-limited.
+  fetch("https://api.github.com/repos/Hayamayama/Anchora/releases/latest")
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (release) {
+      if (!release) return;
+      var asset = (release.assets || []).find(function (a) { return /\.zip$/i.test(a.name); });
+      var el = document.getElementById("release-meta");
+      if (!el) return;
+      var sizeMB = asset ? (asset.size / 1e6).toFixed(1) + " MB" : "";
+      el.innerHTML = "Latest: <a href=\"" + release.html_url + "\">" + release.tag_name + "</a>" +
+        (sizeMB ? " · " + sizeMB : "") + " · macOS arm64";
+    })
+    .catch(function () {});
+</script>
+
+</body>
+</html>
