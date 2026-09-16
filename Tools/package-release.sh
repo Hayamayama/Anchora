@@ -36,9 +36,19 @@ Tools/run-anchora-tests.sh
 Tools/find-orphaned-methods.py SKRightSideViewController.m
 
 say "Build (Release)"
+# Skim's own target already sets MACOSX_DEPLOYMENT_TARGET = 14.0 (see
+# Configurations/Skim-Common.xcconfig), but the vendored third-party
+# sub-projects Anchora embeds -- Sparkle, SkimNotes, SkimTransitions,
+# SkimImporter -- still say 10.13.  Older Xcode/SDK pairs tolerated that
+# quietly; Xcode 27's SDK refuses to build any target below 12.0 at all,
+# which is what turned a build that worked yesterday into an outright
+# failure today with no project file having changed.  Overriding it here
+# on the command line reaches every target in the build, including those
+# vendored sub-projects, without editing files this project does not own.
 xcodebuild -project Skim.xcodeproj -scheme Skim -configuration Release \
     -derivedDataPath "$derived" \
-    build CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- > /private/tmp/anchora-package.log 2>&1 \
+    build CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- MACOSX_DEPLOYMENT_TARGET=14.0 \
+    > /private/tmp/anchora-package.log 2>&1 \
     || { echo "build failed; see /private/tmp/anchora-package.log"; exit 1; }
 errors=$(grep -cE '^/.*: error: ' /private/tmp/anchora-package.log || true)
 [ "$errors" = "0" ] || { echo "$errors compile error(s); see /private/tmp/anchora-package.log"; exit 1; }

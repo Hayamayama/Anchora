@@ -894,6 +894,30 @@ Recall 和 Quiz 用過幾週之後回頭看，發現一個浪費：每一次批�
 
 ---
 
+### 發行腳本：Xcode 27 一夜之間讓 Release 建置失敗
+
+1.8.2 的公證總算跑通了（兩個 submission 都是 `Accepted`），照理接下來對 1.9.0 重跑同一套指令就結束了。結果 Release 建置直接失敗，而且是昨天完全正常跑過的同一份程式碼、同一個指令。
+
+錯誤是：
+
+```
+error: The macOS deployment target 'MACOSX_DEPLOYMENT_TARGET' is set to 10.13,
+but the range of supported deployment target versions is 12.0 to 27.0.x.
+(in target 'Sparkle' / 'SkimNotes' / 'SkimTransitions' / 'SkimImporter' ...)
+```
+
+**這不是這幾天任何一次改動造成的。** 先用完全不帶簽章、跟 `package-release.sh` 無關的最陽春 `xcodebuild ... build CODE_SIGNING_ALLOWED=NO` 重跑一次確認——一樣失敗，一樣的錯誤。再查 `xcodebuild -version`：`Xcode 27.0`。這台機器在昨天到今天之間自動更新了 Xcode，新版 SDK 直接拒絕建置任何部署目標低於 12.0 的 target，而舊版 SDK 對這件事只是默默放過。
+
+Anchora 自己的 target 沒有問題——`Configurations/Skim-Common.xcconfig` 早就設定 `MACOSX_DEPLOYMENT_TARGET = 14.0`，跟 README 寫的系統需求一致。**壞掉的是內嵌的第三方子專案**：Sparkle、SkimNotes、SkimTransitions、SkimImporter 這幾個 vendored 進來的 Xcode 專案各自的 `.xcodeproj` 都還設在 10.13，這是它們原始上游的設定，Anchora 從來沒有動過那些檔案。
+
+修法沒有去碰任何一個第三方專案檔——那樣做既多餘又容易在下次同步上游時衝突。改成在 `package-release.sh` 呼叫 `xcodebuild` 時**用命令列參數蓋過去**：`MACOSX_DEPLOYMENT_TARGET=14.0`。命令列給的 build setting 會蓋過整個建置範圍內每一個 target 自己的設定，包括被拉進來的子專案，一行參數解決，不需要動任何被追蹤的第三方原始檔。
+
+用最陽春的 Debug 建置驗證過：加上這個參數之後 `BUILD SUCCEEDED`，且訊息裡確認 `MACOSX_DEPLOYMENT_TARGET = 14.0` 真的套用到整個建置環境（`export MACOSX_DEPLOYMENT_TARGET=14.0` 出現在建置紀錄裡）。419 個既有測試與孤兒方法檢查照跑照過，這次改動只碰建置腳本一行參數。
+
+**這件事本身也是個提醒：** 這類「上游子專案設定過舊、被新 SDK 一次全部擋下來」的失敗，跟任何一次 app 端的程式改動都無關，未來 Xcode 再更新一次也可能重演類似情況（例如某天 12.0 這個下限本身也被拉高）。command-line override 是這裡最省事的解法，但如果之後想徹底解決，正確做法是各自更新那幾個 vendored 專案自己的 `Info.plist`／`project.pbxproj`，跟著上游走。
+
+---
+
 ## 目前可用功能
 
 ### PDF 與筆記
