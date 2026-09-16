@@ -317,19 +317,12 @@
     <div class="steps">
       <div class="step">
         <h3><span class="step-num">1</span>Download and open</h3>
-        <p>Get the latest build from the button above, unzip it, and drag <code>Anchora.app</code> to Applications.</p>
+        <p>Get the latest build from the button above, unzip it, and drag <code>Anchora.app</code> to Applications. It's signed and notarized by Apple, so it just opens — no warning, no extra step.</p>
+        <p style="color: var(--text-tertiary); font-size: 13px;">If a particular build somehow still gets flagged as unverified, open <strong>System Settings → Privacy &amp; Security</strong> and click <strong>Open Anyway</strong> next to the message about Anchora — that shouldn't normally be necessary.</p>
       </div>
 
       <div class="step">
-        <h3><span class="step-num">2</span>Get past the Gatekeeper warning</h3>
-        <p>Anchora isn't notarized by Apple yet, so the first time you open it, macOS refuses and calls it damaged or from an unidentified developer. That's expected for a small project without a paid Apple developer account behind every release — it doesn't mean anything is wrong with the file.</p>
-        <p>Open <strong>System Settings → Privacy &amp; Security</strong>, scroll down to the message about Anchora, click <strong>Open Anyway</strong>, and confirm. macOS only asks once per version.</p>
-        <p>If you're comfortable with Terminal, this does the same thing in one step:</p>
-        <pre><code>xattr -dr com.apple.quarantine /Applications/Anchora.app</code></pre>
-      </div>
-
-      <div class="step">
-        <h3><span class="step-num">3</span>Add your OpenAI API key</h3>
+        <h3><span class="step-num">2</span>Add your OpenAI API key</h3>
         <p>Open a PDF, show the AI panel, click <strong>•••</strong> → <strong>Set OpenAI API Key…</strong>, and paste in a key from the <a href="https://platform.openai.com/api-keys">OpenAI Platform</a>. It's stored only in your Mac's Keychain — never in a PDF, never sent anywhere but OpenAI.</p>
         <div class="note">
           <strong>This uses your own API billing, separate from ChatGPT Plus.</strong>

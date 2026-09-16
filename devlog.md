@@ -916,6 +916,59 @@ Anchora 自己的 target 沒有問題——`Configurations/Skim-Common.xcconfig`
 
 **這件事本身也是個提醒：** 這類「上游子專案設定過舊、被新 SDK 一次全部擋下來」的失敗，跟任何一次 app 端的程式改動都無關，未來 Xcode 再更新一次也可能重演類似情況（例如某天 12.0 這個下限本身也被拉高）。command-line override 是這裡最省事的解法，但如果之後想徹底解決，正確做法是各自更新那幾個 vendored 專案自己的 `Info.plist`／`project.pbxproj`，跟著上游走。
 
+### 1.9.0 真的公證成功了
+
+修完部署目標的問題之後重跑，這次是**完整走完整條公證流程**，不是又卡住：
+
+```
+Current status: In Progress...Current status: In Progress....Current status: Accepted.....
+The staple and validate action worked!
+```
+
+從送出到 `Accepted` 這次只花幾分鐘，跟 1.8.2 那兩次動輒一到四小時完全不同量級——大概是這個 Team ID 現在有了公證紀錄，Apple 那邊不用再重新建立信任。
+
+**沒有只信腳本自己印的訊息，另外獨立驗證兩次：**
+
+```
+$ xcrun stapler validate Distribution/Anchora.app
+The validate action worked!
+
+$ spctl -a -vv Distribution/Anchora.app
+Distribution/Anchora.app: accepted
+source=Notarized Developer ID
+```
+
+`spctl` 這行是關鍵——那是 macOS 自己在使用者雙擊一個從網路下載的 app 時實際執行的檢查，`source=Notarized Developer ID` 代表**這個版本打開不會跳任何警告**，不需要 quarantine workaround，也不需要去系統設定點「強制打開」。
+
+新的 `Anchora-1.9.0-macos-arm64.zip`，SHA-256 `a3d79e69…`，已經蓋好票證。**這是第一個完整公證過的 Anchora 版本。**
+
+`docs/index.html` 的安裝說明因此需要同步修改——「Get past the Gatekeeper warning」那整節描述的是 ad-hoc 簽章版本才有的困擾，對這個版本已經不成立了，順手一併改掉。
+
+**之後要查任何一次公證的狀態，用這個指令：**
+
+```sh
+xcrun notarytool history --keychain-profile AnchoraNotary
+```
+
+列出這個 keychain profile 送過的每一次 submission、狀態與時間戳；單一筆的細節（例如失敗時的確切原因）另外用 `xcrun notarytool log <submission-id> --keychain-profile AnchoraNotary` 查。
+
+**發布之後，附件對不對還得另外查——GitHub Release 頁面上顯示「已發布」不代表附件是對的版本。** 這次發布 v1.9.0 時就踩到：Release 建好了，但附件一開始還是重跑公證*之前*那份 ad-hoc 簽章的舊 zip（SHA-256 `848dbe05…`），跟公證完成後蓋了票證的新 zip（`a3d79e69…`）並不是同一個檔案。換掉附件之後，用 GitHub API 直接查 release asset 的 `digest` 欄位確認雜湊對上：
+
+```sh
+curl -s https://api.github.com/repos/Hayamayama/Anchora/releases/latest \
+  | python3 -c "import json,sys; d=json.load(sys.stdin); print([(a['name'], a.get('digest')) for a in d['assets']])"
+```
+
+**光是雜湊對上還不夠有說服力，所以又做了一次最貼近真實情境的驗證**：直接從 Release 頁面真正的下載網址（`.../releases/download/v1.9.0/...`）把檔案抓下來、手動加上瀏覽器下載會留的 `com.apple.quarantine` 屬性（模擬一個朋友真的用 Safari 點下載）、解壓、跑 `spctl -a -vv`——這正是 macOS 自己在使用者雙擊一個下載檔案時執行的檢查：
+
+```
+$ spctl -a -vv Anchora.app
+Anchora.app: accepted
+source=Notarized Developer ID
+```
+
+帶著 quarantine flag 也照樣直接放行。到這一步，Release、頁面上的下載按鈕、和一個真實使用者會拿到的實際檔案三者才算真正一致——**1.9.0 是第一個可以直接分享給不懂 Terminal 的人、對方雙擊就能打開、不會跳任何警告的版本。**
+
 ---
 
 ## 目前可用功能
