@@ -1,34 +1,14 @@
 # Anchora
 
-Anchora is a macOS PDF study workspace built on Skim: read a PDF on the left, ask an AI assistant on the right, and pin answers back into the document as editable PDF notes.
+Anchora is a macOS reading companion built on Skim: read a PDF on the left, ask an AI assistant on the right, and get the feedback loop studying actually needs — Recall and Quiz turn a page you just read into a real signal about whether it worked, and a Study map plans the whole document instead of summarizing it.
 
-It supports selected-text questions, OCR regions, image regions, page/PDF summaries, short local conversation memory, optional web verification, and standard PDF annotations.
+**[hayamayama.github.io/Anchora](https://hayamayama.github.io/Anchora/)** is the install page — a plain-language walkthrough for anyone who isn't going to read the rest of this file. This README stays technical: build instructions, release process, and what's under the hood.
 
 ## Install the app
 
-Anchora is signed ad-hoc rather than with an Apple Developer ID, so macOS
-quarantines it when a browser downloads it. On macOS 15 and later,
-Control-clicking and choosing **Open** no longer gets past that.
+Every release from `v1.9.0` onward is **signed with a Developer ID and notarized by Apple** — download it, unzip it, drag `Anchora.app` to `/Applications`, and open it. No warning, no workaround.
 
-**The short way.** Paste this into Terminal, replacing the URL with the one
-from this repository's Releases page:
-
-```sh
-curl -L -o /tmp/Anchora.zip "PASTE_THE_RELEASE_URL_HERE" \
-  && ditto -x -k /tmp/Anchora.zip /Applications \
-  && xattr -dr com.apple.quarantine /Applications/Anchora.app \
-  && open /Applications/Anchora.app
-```
-
-That downloads it, installs it, and clears the quarantine flag macOS attaches
-to downloads. Clearing that flag is what skips the warning, so only run this
-for a build you actually trust — check the checksum below against the file if
-you want to be sure.
-
-**The Finder way.** Unzip, drag `Anchora.app` to `/Applications`, double-click
-it, and let macOS refuse. Then open **System Settings → Privacy & Security**,
-scroll to the message about Anchora, click **Open Anyway**, and confirm. macOS
-asks once per version.
+Grab the latest build from the **[Releases page](https://github.com/Hayamayama/Anchora/releases/latest)**. If a particular build somehow still gets flagged as unverified — a release published without notarization, or a stapled ticket that didn't survive some transfer — open **System Settings → Privacy & Security** and click **Open Anyway** next to the message about Anchora; that shouldn't normally be necessary.
 
 Then open a PDF, show the AI pane, click `•••` → **Set OpenAI API Key…**, and
 enter your own OpenAI Platform API key.
@@ -44,14 +24,16 @@ The key is stored only in your macOS Keychain. It is never saved inside a PDF or
 
 ## Use it
 
-- Select text and ask a question in the AI pane.
-- `Option` + drag: OCR a PDF area. Recognition covers Traditional Chinese, Simplified Chinese and English.
-- `Command` + `Option` + drag: send an image region.
+- Select text, `Option`-drag to OCR a region, or `Command`-`Option`-drag to send an image region — the AI pane answers with citations back to the page.
+- **Recall**: write one sentence from memory in the ask bar, then press it. You get told exactly what was right, wrong, and missed — a diff against the page, not a summary.
+- **Quiz**: two or three questions on the page you just read, no answers or hints included. Type your answers in the ask bar and send them for marking.
+- **Review queue**: every Recall and Quiz correction comes back later on a schedule (a day, then three, then a week, then longer) in the sidebar's `Review` tab, across every open document.
+- **Study map** / **Paper map**: a plan for the whole document — what order, what to focus on, what to skip — or an evidence-first breakdown of a paper (Scientific profile). Each ends in a self-test section whose questions can be checked off; the checklist survives rebuilding the map.
 - `Web verify`: search and check current claims, then show the web sources used.
-- `Pin latest answer`: add the latest AI answer as an editable anchor note in the PDF.
-- Under any answer: `Copy` it as plain text, `Pin as note` (a compact anchored note) or `Pin as text` (a text note visible on the page). Older answers keep their own PDF anchor, so a question asked three turns ago can still be pinned where it belongs.
-- `Study map`: ask for a plan for working through the whole document — what order, what to focus on, what to skip, and what to be able to answer afterwards. Study profile only; it needs no selection.
-- `•••`: summarize the current page or the complete PDF.
+- `Pin latest answer`, or under any answer `Pin as note` / `Pin as text`: write an AI answer back into the PDF as an ordinary, editable annotation. Older answers keep their own anchor, so a question asked three turns ago can still be pinned where it belongs.
+- **Photos into the page**: right-click → **Import from iPhone or iPad** (Continuity Camera) or **Insert Picture…**, or paste / drag a picture in. It lands as a movable, resizable note on the page.
+- **Thought inbox**: `⌘⇧J` from anywhere in the app catches a stray thought in one line without leaving the page you're reading; the sidebar's `Inbox` tab manages it.
+- `•••`: summarize the current page or the complete PDF, switch response language, or change the AI model.
 
 ## Build from source
 
@@ -60,8 +42,15 @@ Requirements: current Xcode, and macOS 14.0 or later (the deployment target).
 ```sh
 xcodebuild -project Skim.xcodeproj -scheme Skim -configuration Release \
   -derivedDataPath /private/tmp/anchora-derived \
-  build CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-
+  build CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- MACOSX_DEPLOYMENT_TARGET=14.0
 ```
+
+The `MACOSX_DEPLOYMENT_TARGET` override is there on purpose: Skim's own target
+already sets 14.0, but a few third-party projects vendored in (Sparkle,
+SkimNotes, SkimTransitions, SkimImporter) still carry their own upstream
+10.13, and current Xcode/SDK releases refuse to build anything below 12.0 at
+all. The override reaches every target in the build, sub-projects included,
+without editing files this repository doesn't own.
 
 The resulting app is at:
 
@@ -78,7 +67,10 @@ Tools/package-release.sh
 This runs the tests, builds Release, signs the bundle inside out, and writes
 `Distribution/Anchora-<version>-macos-arm64.zip` with its checksum. The
 `Distribution` folder is ignored by Git, so attach that file to the Release by
-hand (or with `gh release create`) rather than committing it.
+hand (or with `gh release create`) rather than committing it. Verify the
+attached asset is the one you just built — a release page can exist before
+its attachment does, and replacing an asset later needs a manual check that
+the two actually match.
 
 ### Signing it properly
 
@@ -86,30 +78,32 @@ With an Apple Developer Program membership the same command produces a build
 that opens with no warning and needs none of the install steps above:
 
 ```sh
-xcrun notarytool store-credentials anchora \
+xcrun notarytool store-credentials AnchoraNotary \
   --apple-id you@example.com --team-id TEAMID --password APP_SPECIFIC_PASSWORD
 
 ANCHORA_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
-ANCHORA_NOTARY_PROFILE=anchora \
+ANCHORA_NOTARY_PROFILE=AnchoraNotary \
   Tools/package-release.sh
 ```
 
-The script then signs with the hardened runtime and a secure timestamp,
-submits the archive to Apple, staples the ticket to the app, and rebuilds the
-archive so the ticket travels with it.
+The script signs every embedded Mach-O individually (not just the four
+bundle types that happen to be their own directories — a loose tool or a
+framework's secondary binary needs its own signature too), applies the
+hardened runtime and a secure timestamp, submits the archive to Apple,
+staples the ticket to the app, and rebuilds the archive so the ticket
+travels with it. To check on a submission afterward:
 
-This path has not been exercised: no Developer ID certificate has been
-available on the machine Anchora is built on. Expect the first notarisation to
-report something to fix — the bundle embeds Sparkle, its Updater helper app,
-SkimNotes and a Spotlight importer, and every one of them has to satisfy the
-hardened runtime.
-
-Current release asset checksum:
-
-```text
-Anchora-1.5.0-macos-arm64.zip
-SHA-256: 59444ff7b126bbde61fb6c1e1740be8149fd33d97f907b573078748e77cc13a5
+```sh
+xcrun notarytool history --keychain-profile AnchoraNotary
+xcrun notarytool log <submission-id> --keychain-profile AnchoraNotary
 ```
+
+This path is exercised as of `v1.9.0` — `spctl -a -vv` on that release's
+downloaded, quarantined `.app` reports `accepted, source=Notarized Developer
+ID`. A first submission from a brand-new Developer ID can take an hour or
+more while Apple establishes trust for that Team ID; later ones are faster.
+
+Each release's exact checksum is on its own [Releases page](https://github.com/Hayamayama/Anchora/releases) entry rather than duplicated here, where it would only ever describe one past version.
 
 ## Run the tests
 
